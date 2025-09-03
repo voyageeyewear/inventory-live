@@ -21,6 +21,14 @@ const productSchema = new mongoose.Schema({
   image_url: {
     type: String,
     trim: true
+  },
+  last_synced: {
+    type: Date,
+    default: null
+  },
+  needs_sync: {
+    type: Boolean,
+    default: true
   }
 }, {
   timestamps: true

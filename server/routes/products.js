@@ -118,10 +118,14 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
         const isUpdate = !!existingProduct;
         const oldQuantity = existingProduct ? existingProduct.quantity : 0;
 
-        // Use upsert to update existing or create new
+        // Use upsert to update existing or create new, mark as needing sync
         const updatedProduct = await Product.findOneAndUpdate(
           { sku: productData.sku },
-          productData,
+          { 
+            ...productData,
+            needs_sync: true,
+            last_synced: null
+          },
           { upsert: true, new: true }
         );
 
@@ -255,10 +259,16 @@ router.put('/:id', async (req, res) => {
     const oldQuantity = existingProduct.quantity;
     const newQuantity = parseInt(quantity);
 
-    // Update the product
+    // Update the product and mark as needing sync
     const updatedProduct = await Product.findByIdAndUpdate(
       id,
-      { product_name, quantity: newQuantity, image_url },
+      { 
+        product_name, 
+        quantity: newQuantity, 
+        image_url,
+        needs_sync: true,
+        last_synced: null
+      },
       { new: true }
     );
 

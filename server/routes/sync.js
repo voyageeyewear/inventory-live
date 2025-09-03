@@ -311,16 +311,25 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ message: 'No connected stores found' });
     }
 
-    // Get all products from master database
-    const products = await Product.find();
+    // Get only products that need syncing
+    const products = await Product.find({ needs_sync: true });
     
     if (products.length === 0) {
-      return res.status(400).json({ message: 'No products found to sync' });
+      return res.status(200).json({ 
+        message: 'No products need syncing. All products are up to date!',
+        storesUpdated: 0,
+        totalProductsUpdated: 0,
+        totalErrors: 0,
+        results: []
+      });
     }
+
+    console.log(`🔄 Found ${products.length} products that need syncing`);
 
     let totalUpdated = 0;
     let totalErrors = 0;
     const syncResults = [];
+    const successfullyUpdatedProducts = new Set(); // Track products that were successfully updated
 
     // Process each store
     for (const store of stores) {
@@ -362,6 +371,7 @@ router.post('/', async (req, res) => {
               );
               storeResult.updated++;
               totalUpdated++;
+              successfullyUpdatedProducts.add(product.sku); // Track successful update
               console.log(`✅ Updated ${product.sku} to ${product.quantity} units`);
             } else {
               // Product doesn't exist in this store - skip or create
@@ -408,12 +418,26 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // Mark successfully synced products as no longer needing sync
+    if (successfullyUpdatedProducts.size > 0) {
+      const syncedSkus = Array.from(successfullyUpdatedProducts);
+      await Product.updateMany(
+        { sku: { $in: syncedSkus } },
+        { 
+          needs_sync: false, 
+          last_synced: new Date() 
+        }
+      );
+      console.log(`📝 Marked ${syncedSkus.length} products as synced: ${syncedSkus.join(', ')}`);
+    }
+
     res.json({
       message: `Sync completed. Updated ${totalUpdated} products across ${stores.length} stores`,
       storesUpdated: stores.length,
       totalProductsUpdated: totalUpdated,
       totalErrors,
-      results: syncResults
+      results: syncResults,
+      productsSynced: Array.from(successfullyUpdatedProducts)
     });
 
   } catch (error) {
