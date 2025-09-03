@@ -13,6 +13,9 @@ import {
   XCircle,
   RefreshCw
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import ProtectedRoute from '../components/ProtectedRoute';
+import UserDashboard from '../components/UserDashboard';
 
 interface DashboardData {
   overview: {
@@ -69,6 +72,7 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { user, hasPermission } = useAuth();
 
   const fetchDashboardData = async () => {
     try {
@@ -149,8 +153,21 @@ export default function Dashboard() {
     }
   };
 
+  // Show user-specific dashboard for non-admin users
+  if (user?.role === 'user') {
+    return (
+      <ProtectedRoute requiredPermission="viewDashboard">
+        <Layout>
+          <UserDashboard />
+        </Layout>
+      </ProtectedRoute>
+    );
+  }
+
+  // Show admin/manager dashboard
   return (
-    <Layout>
+    <ProtectedRoute requiredPermission="viewDashboard">
+      <Layout>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
@@ -414,5 +431,6 @@ export default function Dashboard() {
         </div>
       </div>
     </Layout>
+    </ProtectedRoute>
   );
 }

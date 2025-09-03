@@ -37,7 +37,7 @@ const allNavigation = [
   { name: 'User Management', href: '/user-management', icon: Users, permission: 'viewUsers' },
   { name: 'Stock-In', href: '/stock-in', icon: TrendingUp, permission: 'stockIn' },
   { name: 'Stock-Out', href: '/stock-out', icon: TrendingDown, permission: 'stockOut' },
-  { name: 'Settings', href: '/settings', icon: Settings, permission: 'viewDashboard' }, // Basic permission for settings
+  { name: 'Settings', href: '/settings', icon: Settings, permission: 'manageSettings' }, // Admin/Manager only
 ]
 
 export default function Layout({ children }: LayoutProps) {

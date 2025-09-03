@@ -4,6 +4,7 @@ const SyncAudit = require('../models/SyncAudit');
 const StockAudit = require('../models/StockAudit');
 const Product = require('../models/Product');
 const Store = require('../models/Store');
+const { authenticateToken } = require('../middleware/auth');
 
 // Get dashboard statistics
 router.get('/dashboard', async (req, res) => {
@@ -263,6 +264,151 @@ router.get('/product/:sku', async (req, res) => {
       success: false, 
       message: 'Failed to fetch product audit logs', 
       error: error.message 
+    });
+  }
+});
+
+// Get user-specific dashboard statistics
+router.get('/user-dashboard', authenticateToken, async (req, res) => {
+  try {
+    const username = req.user.username;
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const last7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Get user's recent activities
+    const [
+      userStockActivities,
+      userSyncActivities,
+      productsNeedingSync,
+      userProductsAdded,
+      recentStockMovements,
+      userStats
+    ] = await Promise.all([
+      // User's stock activities (last 30 days)
+      StockAudit.find({ 
+        user_name: username,
+        createdAt: { $gte: last30Days }
+      }).sort({ createdAt: -1 }).limit(10),
+
+      // User's sync activities (last 30 days) 
+      SyncAudit.find({ 
+        user_name: username,
+        createdAt: { $gte: last30Days }
+      }).sort({ createdAt: -1 }).limit(10),
+
+      // Products that need syncing (if user has sync permissions)
+      Product.countDocuments({ needs_sync: true }),
+
+      // Products added by user (last 30 days)
+      StockAudit.countDocuments({
+        user_name: username,
+        action: 'product_upload',
+        createdAt: { $gte: last30Days }
+      }),
+
+      // Recent stock movements by user (last 7 days)
+      StockAudit.find({
+        user_name: username,
+        action: { $in: ['stock_in', 'stock_out', 'stock_update'] },
+        createdAt: { $gte: last7Days }
+      }).sort({ createdAt: -1 }).limit(5),
+
+      // User activity statistics
+      Promise.all([
+        StockAudit.countDocuments({ user_name: username }),
+        SyncAudit.countDocuments({ user_name: username }),
+        StockAudit.countDocuments({ 
+          user_name: username, 
+          createdAt: { $gte: startOfDay }
+        }),
+        StockAudit.aggregate([
+          { $match: { user_name: username, action: 'stock_in' } },
+          { $group: { _id: null, total: { $sum: '$quantity_change' } } }
+        ]),
+        StockAudit.aggregate([
+          { $match: { user_name: username, action: 'stock_out' } },
+          { $group: { _id: null, total: { $sum: { $abs: '$quantity_change' } } } }
+        ])
+      ])
+    ]);
+
+    const [
+      totalActivities,
+      totalSyncs,
+      todayActivities,
+      totalStockIn,
+      totalStockOut
+    ] = userStats;
+
+    // Calculate user performance metrics
+    const stockInTotal = totalStockIn[0]?.total || 0;
+    const stockOutTotal = totalStockOut[0]?.total || 0;
+
+    // Group recent activities by date
+    const activityByDate = {};
+    recentStockMovements.forEach(activity => {
+      const date = activity.createdAt.toISOString().split('T')[0];
+      if (!activityByDate[date]) {
+        activityByDate[date] = { stock_in: 0, stock_out: 0, updates: 0 };
+      }
+      if (activity.action === 'stock_in') {
+        activityByDate[date].stock_in += activity.quantity_change;
+      } else if (activity.action === 'stock_out') {
+        activityByDate[date].stock_out += Math.abs(activity.quantity_change);
+      } else if (activity.action === 'stock_update') {
+        activityByDate[date].updates += 1;
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          username: username,
+          role: req.user.role
+        },
+        summary: {
+          totalActivities,
+          totalSyncs,
+          todayActivities,
+          productsAdded: userProductsAdded,
+          totalStockIn: stockInTotal,
+          totalStockOut: stockOutTotal,
+          productsNeedingSync
+        },
+        recentActivities: {
+          stockMovements: recentStockMovements,
+          syncActivities: userSyncActivities.slice(0, 5),
+          activityByDate
+        },
+        charts: {
+          last7DaysActivity: Object.entries(activityByDate).map(([date, data]) => ({
+            date,
+            ...data
+          }))
+        },
+        alerts: [
+          ...(productsNeedingSync > 0 ? [{
+            type: 'warning',
+            message: `${productsNeedingSync} products need syncing`,
+            action: 'View Products'
+          }] : []),
+          ...(todayActivities === 0 ? [{
+            type: 'info',
+            message: 'No activities recorded today',
+            action: 'Add Stock'
+          }] : [])
+        ]
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching user dashboard:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch user dashboard data' 
     });
   }
 });
