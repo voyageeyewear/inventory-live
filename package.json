@@ -1,0 +1,16 @@
+{
+  "name": "shopify-inventory-app",
+  "version": "1.0.0",
+  "description": "Shopify App for multi-store inventory management",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "echo 'Choose: npm run backend (port 8080) or npm run frontend (port 3000)'",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd server && npm run dev",
+    "build": "cd frontend && npm run build",
+    "start": "cd server && npm start",
+    "install:all": "npm install && cd frontend && npm install && cd ../server && npm install",
+    "backend": "cd server && npm run dev",
+    "frontend": "cd frontend && npm run dev"
+  }
+}
