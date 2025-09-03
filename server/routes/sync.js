@@ -19,7 +19,7 @@ router.post('/test-one', async (req, res) => {
     const targetSku = req.body.sku;
     const product = targetSku 
       ? await Product.findOne({ sku: targetSku })
-      : await Product.findOne({ sku: "A3173MG7376" }); // Use a known matching SKU
+      : await Product.findOne({ sku: "TEST-BEST" }); // Use TEST-BEST for testing
     
     if (!product) {
       return res.status(400).json({ message: 'No products found to sync' });

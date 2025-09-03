@@ -35,12 +35,45 @@ export default function Layout({ children }: LayoutProps) {
   const router = useRouter()
 
   const handleSync = async () => {
+    // First confirmation with warning
+    const firstConfirm = window.confirm(
+      "⚠️ WARNING: BULK SYNC TO ALL STORES ⚠️\n\n" +
+      "This will update inventory quantities for ALL products in ALL connected Shopify stores.\n\n" +
+      "⚠️ This action cannot be undone!\n" +
+      "⚠️ This may take several minutes to complete!\n" +
+      "⚠️ This will overwrite current Shopify inventory!\n\n" +
+      "Are you sure you want to continue?"
+    );
+
+    if (!firstConfirm) {
+      return; // User cancelled
+    }
+
+    // Second confirmation - final warning
+    const secondConfirm = window.confirm(
+      "🚨 FINAL CONFIRMATION 🚨\n\n" +
+      "This is your LAST CHANCE to cancel!\n\n" +
+      "Clicking 'OK' will immediately start syncing ALL inventory to ALL stores.\n\n" +
+      "✅ I understand this will overwrite Shopify inventory\n" +
+      "✅ I understand this action cannot be undone\n" +
+      "✅ I want to proceed with bulk sync\n\n" +
+      "Click 'OK' to start sync, or 'Cancel' to abort."
+    );
+
+    if (!secondConfirm) {
+      toast.info("Bulk sync cancelled by user");
+      return; // User cancelled on second confirmation
+    }
+
+    // User confirmed twice, proceed with sync
     setSyncing(true)
+    toast.loading("Starting bulk sync to all stores...", { duration: 3000 });
+    
     try {
       const response = await axios.post('/api/sync')
-      toast.success(`Successfully synced inventory to ${response.data.storesUpdated} stores`)
+      toast.success(`✅ Successfully synced inventory to ${response.data.storesUpdated} stores`)
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Sync failed')
+      toast.error(`❌ Sync failed: ${error.response?.data?.message || 'Unknown error'}`)
     } finally {
       setSyncing(false)
     }
@@ -132,10 +165,15 @@ export default function Layout({ children }: LayoutProps) {
               <button
                 onClick={handleSync}
                 disabled={syncing}
-                className="btn-primary flex items-center gap-2"
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  syncing 
+                    ? 'bg-gray-400 text-white cursor-not-allowed' 
+                    : 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl border-2 border-red-700'
+                }`}
+                title="⚠️ WARNING: This will sync ALL products to ALL stores!"
               >
                 <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing...' : 'Sync All Stores'}
+                {syncing ? 'Syncing All Stores...' : '⚠️ Sync All Stores'}
               </button>
             </div>
           </div>

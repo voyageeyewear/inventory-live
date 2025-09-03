@@ -43,13 +43,55 @@ class ShopifyService {
 
   async getProductBySku(sku) {
     try {
-      // Search for product variants by SKU
-      const response = await this.makeRequest(`/products.json?limit=250`);
-      const products = response.products || [];
+      let allProducts = [];
+      let hasNextPage = true;
+      let sinceId = 0;
+      let pageCount = 0;
+      const maxPages = 20; // Safety limit to prevent infinite loops
       
-      for (const product of products) {
+      console.log(`🔍 Searching for SKU "${sku}" across all products...`);
+      
+      // Paginate through all products using since_id
+      while (hasNextPage && pageCount < maxPages) {
+        let url = `/products.json?limit=250&since_id=${sinceId}`;
+        
+        const response = await this.makeRequest(url);
+        const products = response.products || [];
+        
+        console.log(`📄 Page ${pageCount + 1}: Found ${products.length} products (since_id: ${sinceId})`);
+        
+        if (products.length === 0) {
+          hasNextPage = false;
+          break;
+        }
+        
+        allProducts = allProducts.concat(products);
+        
+        // Update since_id to the last product's ID for next page
+        if (products.length > 0) {
+          sinceId = products[products.length - 1].id;
+        }
+        
+        // If we got less than 250 products, we've reached the end
+        if (products.length < 250) {
+          hasNextPage = false;
+        }
+        
+        pageCount++;
+        
+        // Add a small delay to respect rate limits
+        if (hasNextPage) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      console.log(`📦 Total products searched: ${allProducts.length}`);
+      
+      // Search through all products for the SKU
+      for (const product of allProducts) {
         for (const variant of product.variants) {
           if (variant.sku === sku) {
+            console.log(`✅ Found SKU "${sku}" in product "${product.title}" (ID: ${product.id})`);
             return {
               product,
               variant
@@ -58,6 +100,7 @@ class ShopifyService {
         }
       }
       
+      console.log(`❌ SKU "${sku}" not found in ${allProducts.length} products`);
       return null;
     } catch (error) {
       console.error('Error finding product by SKU:', error);

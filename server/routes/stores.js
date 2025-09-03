@@ -130,5 +130,104 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// Debug: Search for a specific SKU in a store
+router.get('/:id/search/:sku', async (req, res) => {
+  try {
+    const { id, sku } = req.params;
+    
+    const store = await Store.findById(id);
+    if (!store) {
+      return res.status(404).json({ message: 'Store not found' });
+    }
+
+    const ShopifyService = require('../services/shopifyService');
+    const service = new ShopifyService(store.store_domain, store.access_token);
+    
+    console.log(`🔍 Searching for SKU "${sku}" in store "${store.store_name}"`);
+    
+    // Use the improved getProductBySku method
+    const result = await service.getProductBySku(sku);
+    
+    let foundProduct = null;
+    if (result) {
+      foundProduct = {
+        product_id: result.product.id,
+        product_title: result.product.title,
+        variant_id: result.variant.id,
+        variant_sku: result.variant.sku,
+        inventory_quantity: result.variant.inventory_quantity
+      };
+    }
+    
+    res.json({
+      success: true,
+      store_name: store.store_name,
+      searched_sku: sku,
+      found: !!foundProduct,
+      product: foundProduct,
+      message: foundProduct ? `Found SKU "${sku}" in product "${foundProduct.product_title}"` : `SKU "${sku}" not found in store`
+    });
+    
+  } catch (error) {
+    console.error('Error searching for SKU:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to search for SKU',
+      error: error.message 
+    });
+  }
+});
+
+// Debug: Check if a specific product ID exists
+router.get('/:id/product/:productId', async (req, res) => {
+  try {
+    const { id, productId } = req.params;
+    
+    const store = await Store.findById(id);
+    if (!store) {
+      return res.status(404).json({ message: 'Store not found' });
+    }
+
+    const ShopifyService = require('../services/shopifyService');
+    const service = new ShopifyService(store.store_domain, store.access_token);
+    
+    console.log(`🔍 Checking product ID "${productId}" in store "${store.store_name}"`);
+    
+    // Get specific product by ID
+    const response = await service.makeRequest(`/products/${productId}.json`);
+    const product = response.product;
+    
+    if (product) {
+      const variants = product.variants.map(v => ({
+        id: v.id,
+        sku: v.sku,
+        inventory_quantity: v.inventory_quantity
+      }));
+      
+      res.json({
+        success: true,
+        store_name: store.store_name,
+        product_id: product.id,
+        product_title: product.title,
+        variants: variants,
+        message: `Product "${product.title}" found with ${variants.length} variants`
+      });
+    } else {
+      res.json({
+        success: false,
+        message: `Product ID "${productId}" not found in store`
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error checking product ID:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to check product ID',
+      error: error.message 
+    });
+  }
+});
+
 module.exports = router;
 
