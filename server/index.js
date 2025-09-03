@@ -11,6 +11,7 @@ const storesRoutes = require('./routes/stores');
 const syncRoutes = require('./routes/sync');
 const auditRoutes = require('./routes/audit');
 const reportsRoutes = require('./routes/reports');
+const dataManagementRoutes = require('./routes/dataManagement');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -37,6 +38,7 @@ app.use('/api/stores', storesRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/data-management', dataManagementRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -60,6 +62,7 @@ app.get('/', (req, res) => {
       sync: '/api/sync',
       audit: '/api/audit',
       reports: '/api/reports',
+      dataManagement: '/api/data-management',
       health: '/api/health'
     }
   });
