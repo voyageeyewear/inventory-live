@@ -1,0 +1,8 @@
+Title,Type,Variant SKU,Variant Inventory Qty,Image Src
+Test Product A,Physical,TEST-001,50,https://example.com/test1.jpg
+Test Product B,Physical,TEST-002,30,https://example.com/test2.jpg
+Test Product A Duplicate,Physical,TEST-001,25,https://example.com/test1-alt.jpg
+Test Product C,Physical,TEST-003,100,https://example.com/test3.jpg
+Test Product B Another Duplicate,Physical,TEST-002,20,https://example.com/test2-alt.jpg
+Test Product A Third Entry,Physical,TEST-001,15,https://example.com/test1-third.jpg
+Test Product D,Physical,TEST-004,75,https://example.com/test4.jpg

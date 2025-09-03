@@ -59,19 +59,60 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
     const errors = [];
     const batchId = `csv_upload_${Date.now()}`;
 
-    // Process each row
+    // First, aggregate duplicate SKUs and sum their quantities
+    const aggregatedProducts = new Map();
+    
     for (let i = 0; i < csvData.length; i++) {
       const row = csvData[i];
       const rowNum = i + 1;
 
       try {
-        const productData = {
-          sku: row['SKU'] || row['sku'] || row['Variant SKU'] || row['variant_sku'],
-          product_name: row['Product Name'] || row['product_name'] || row['Title'] || row['title'],
-          quantity: parseInt(row['Quantity'] || row['quantity'] || row['Variant Inventory Qty'] || row['variant_inventory_qty']),
-          image_url: row['Image'] || row['image'] || row['image_url'] || row['Image Src'] || row['image_src'] || ''
-        };
+        const sku = row['SKU'] || row['sku'] || row['Variant SKU'] || row['variant_sku'];
+        const productName = row['Product Name'] || row['product_name'] || row['Title'] || row['title'];
+        const quantityStr = row['Quantity'] || row['quantity'] || row['Variant Inventory Qty'] || row['variant_inventory_qty'];
+        const quantity = parseInt(quantityStr);
+        const imageUrl = row['Image'] || row['image'] || row['image_url'] || row['Image Src'] || row['image_src'] || '';
 
+        // Validate required fields
+        if (!sku) {
+          errors.push(`Row ${rowNum}: SKU is required`);
+          continue;
+        }
+        if (!productName) {
+          errors.push(`Row ${rowNum}: Product name is required`);
+          continue;
+        }
+        if (isNaN(quantity)) {
+          errors.push(`Row ${rowNum}: Invalid quantity "${quantityStr}"`);
+          continue;
+        }
+
+        if (aggregatedProducts.has(sku)) {
+          // SKU already exists, add quantities
+          const existing = aggregatedProducts.get(sku);
+          existing.quantity += quantity;
+          existing.duplicateRows.push(rowNum);
+          console.log(`🔄 Duplicate SKU found: ${sku} - Adding ${quantity} to existing ${existing.quantity - quantity} = ${existing.quantity}`);
+        } else {
+          // New SKU
+          aggregatedProducts.set(sku, {
+            sku: sku,
+            product_name: productName,
+            quantity: quantity,
+            image_url: imageUrl,
+            duplicateRows: [rowNum]
+          });
+        }
+      } catch (error) {
+        errors.push(`Row ${rowNum}: Error processing row - ${error.message}`);
+      }
+    }
+
+    console.log(`📊 CSV Processing: ${csvData.length} rows processed, ${aggregatedProducts.size} unique products found`);
+
+    // Now process the aggregated products
+    for (const [sku, productData] of aggregatedProducts) {
+      try {
         // Check if product exists
         const existingProduct = await Product.findOne({ sku: productData.sku });
         const isUpdate = !!existingProduct;
@@ -84,6 +125,12 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
           { upsert: true, new: true }
         );
 
+        // Create audit reason with duplicate info
+        let auditReason = 'CSV upload';
+        if (productData.duplicateRows.length > 1) {
+          auditReason += ` (aggregated from ${productData.duplicateRows.length} rows: ${productData.duplicateRows.join(', ')})`;
+        }
+
         // Log stock audit
         if (isUpdate && oldQuantity !== productData.quantity) {
           await StockAudit.create({
@@ -93,7 +140,7 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
             old_quantity: oldQuantity,
             new_quantity: productData.quantity,
             quantity_change: productData.quantity - oldQuantity,
-            reason: 'CSV upload update',
+            reason: auditReason + ' - update',
             source: 'csv_upload',
             batch_id: batchId,
             user_ip: req.ip || 'system'
@@ -107,7 +154,7 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
             old_quantity: 0,
             new_quantity: productData.quantity,
             quantity_change: productData.quantity,
-            reason: 'New product from CSV',
+            reason: auditReason + ' - new product',
             source: 'csv_upload',
             batch_id: batchId,
             user_ip: req.ip || 'system'
@@ -116,17 +163,31 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
         }
 
         successCount++;
+        console.log(`✅ Processed ${sku}: ${productData.quantity} units${productData.duplicateRows.length > 1 ? ` (aggregated from ${productData.duplicateRows.length} rows)` : ''}`);
       } catch (error) {
-        console.error(`Error processing row ${rowNum}:`, error);
-        errors.push(`Row ${rowNum}: ${error.message}`);
+        console.error(`❌ Error processing ${sku}:`, error.message);
+        errors.push(`SKU ${sku}: ${error.message}`);
       }
     }
 
+    // Calculate duplicate info for response
+    const duplicateInfo = Array.from(aggregatedProducts.values())
+      .filter(product => product.duplicateRows.length > 1)
+      .map(product => ({
+        sku: product.sku,
+        totalQuantity: product.quantity,
+        duplicateCount: product.duplicateRows.length,
+        rows: product.duplicateRows
+      }));
+
     res.json({
-      message: `Successfully processed ${successCount} products (${newCount} new, ${updatedCount} updated)`,
+      message: `Successfully processed ${successCount} products (${newCount} new, ${updatedCount} updated)${duplicateInfo.length > 0 ? ` with ${duplicateInfo.length} SKUs aggregated from duplicates` : ''}`,
       count: successCount,
       newProducts: newCount,
       updatedProducts: updatedCount,
+      totalCsvRows: csvData.length,
+      uniqueProducts: aggregatedProducts.size,
+      duplicatesAggregated: duplicateInfo,
       batchId: batchId,
       errors: errors.length > 0 ? errors : undefined
     });
