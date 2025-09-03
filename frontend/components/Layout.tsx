@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import {
   Package,
@@ -10,7 +10,9 @@ import {
   RefreshCw,
   BarChart3,
   Plus,
-  Activity
+  Activity,
+  AlertCircle,
+  CheckCircle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
@@ -32,7 +34,48 @@ const navigation = [
 export default function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [syncStatus, setSyncStatus] = useState({ count: 0, products: [] })
+  const [loading, setLoading] = useState(false)
   const router = useRouter()
+
+  // Fetch sync status
+  const fetchSyncStatus = async () => {
+    try {
+      const response = await axios.get('/api/products/needs-sync')
+      setSyncStatus(response.data)
+    } catch (error) {
+      console.error('Error fetching sync status:', error)
+    }
+  }
+
+  // Mark all products as synced
+  const handleMarkAllSynced = async () => {
+    if (!window.confirm(`Mark all ${syncStatus.count} products as synced? This will clear the sync indicator.`)) {
+      return
+    }
+    
+    try {
+      setLoading(true)
+      await axios.post('/api/products/mark-all-synced')
+      toast.success('All products marked as synced')
+      fetchSyncStatus()
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to mark products as synced')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Load sync status on component mount and when router changes
+  useEffect(() => {
+    fetchSyncStatus()
+  }, [router.pathname])
+
+  // Refresh sync status every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(fetchSyncStatus, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   const handleSync = async () => {
     // First confirmation with warning
@@ -72,6 +115,8 @@ export default function Layout({ children }: LayoutProps) {
     try {
       const response = await axios.post('/api/sync')
       toast.success(`✅ Successfully synced inventory to ${response.data.storesUpdated} stores`)
+      // Refresh sync status after successful sync
+      fetchSyncStatus()
     } catch (error: any) {
       toast.error(`❌ Sync failed: ${error.response?.data?.message || 'Unknown error'}`)
     } finally {
@@ -162,18 +207,45 @@ export default function Layout({ children }: LayoutProps) {
               </h2>
             </div>
             <div className="flex items-center gap-x-4 lg:gap-x-6">
+              {/* Sync Status Indicator */}
+              {syncStatus.count > 0 ? (
+                <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                  <AlertCircle className="h-4 w-4 text-orange-500" />
+                  <span className="text-sm font-medium text-orange-700">
+                    {syncStatus.count} product{syncStatus.count !== 1 ? 's' : ''} need syncing
+                  </span>
+                  <button
+                    onClick={handleMarkAllSynced}
+                    disabled={loading}
+                    className="ml-2 text-xs bg-orange-100 hover:bg-orange-200 text-orange-700 px-2 py-1 rounded transition-colors"
+                    title="Mark all products as synced (clears indicator)"
+                  >
+                    {loading ? 'Marking...' : 'Mark All'}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span className="text-sm font-medium text-green-700">
+                    All products synced
+                  </span>
+                </div>
+              )}
+
               <button
                 onClick={handleSync}
-                disabled={syncing}
+                disabled={syncing || syncStatus.count === 0}
                 className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                   syncing 
                     ? 'bg-gray-400 text-white cursor-not-allowed' 
-                    : 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl border-2 border-red-700'
+                    : syncStatus.count > 0
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl border-2 border-blue-700'
+                      : 'bg-gray-400 text-white cursor-not-allowed'
                 }`}
-                title="⚠️ WARNING: This will sync ALL products to ALL stores!"
+                title={syncStatus.count > 0 ? `Sync ${syncStatus.count} modified products to all stores` : "No products need syncing"}
               >
                 <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing All Stores...' : '⚠️ Sync All Stores'}
+                {syncing ? 'Syncing...' : syncStatus.count > 0 ? `Sync ${syncStatus.count} Products` : 'All Synced'}
               </button>
             </div>
           </div>

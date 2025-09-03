@@ -347,5 +347,41 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Get products that need syncing
+router.get('/needs-sync', async (req, res) => {
+  try {
+    const products = await Product.find({ needs_sync: true }).select('sku product_name quantity updatedAt');
+    
+    res.json({
+      count: products.length,
+      products: products
+    });
+  } catch (error) {
+    console.error('Error getting products needing sync:', error);
+    res.status(500).json({ message: 'Failed to get sync status' });
+  }
+});
+
+// Mark all products as synced (for testing/admin purposes)
+router.post('/mark-all-synced', async (req, res) => {
+  try {
+    const result = await Product.updateMany(
+      { needs_sync: true },
+      { 
+        needs_sync: false, 
+        last_synced: new Date() 
+      }
+    );
+    
+    res.json({
+      message: `Marked ${result.modifiedCount} products as synced`,
+      modifiedCount: result.modifiedCount
+    });
+  } catch (error) {
+    console.error('Error marking products as synced:', error);
+    res.status(500).json({ message: 'Failed to mark products as synced' });
+  }
+});
+
 module.exports = router;
 
