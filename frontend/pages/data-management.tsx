@@ -29,10 +29,12 @@ interface DataSummary {
   auditBreakdown: {
     stockAudits: number;
     syncAudits: number;
+    stockLogs: number;
   };
   recentActivity: {
     stockAuditsLast7Days: number;
     syncAuditsLast7Days: number;
+    stockLogsLast7Days: number;
   };
 }
 
@@ -41,6 +43,7 @@ interface BackupStats {
     products: number;
     stockAudits: number;
     syncAudits: number;
+    stockLogs: number;
     stores: number;
     totalAuditRecords: number;
   };
@@ -50,6 +53,10 @@ interface BackupStats {
       newest: string | null;
     };
     syncAudits: {
+      oldest: string | null;
+      newest: string | null;
+    };
+    stockLogs: {
       oldest: string | null;
       newest: string | null;
     };
@@ -166,6 +173,7 @@ export default function DataManagement() {
       `This will permanently delete:\n` +
       `• All stock audit history (${backupStats?.counts.stockAudits || 0} records)\n` +
       `• All sync audit history (${backupStats?.counts.syncAudits || 0} records)\n` +
+      `• All stock log history (${backupStats?.counts.stockLogs || 0} records)\n` +
       `• All reports history data\n\n` +
       `PRESERVED:\n` +
       `• Product inventory (${dataSummary?.overview.totalProducts || 0} products)\n` +
@@ -314,6 +322,10 @@ export default function DataManagement() {
                     <span className="font-medium">{formatNumber(backupStats?.counts.syncAudits || 0)}</span>
                   </div>
                   <div className="flex justify-between">
+                    <span>Stock Logs:</span>
+                    <span className="font-medium">{formatNumber(backupStats?.counts.stockLogs || 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
                     <span>Total Records:</span>
                     <span className="font-medium">{formatNumber(backupStats?.counts.totalAuditRecords || 0)}</span>
                   </div>
@@ -426,6 +438,10 @@ export default function DataManagement() {
                           <span className="text-gray-600">Sync Audits:</span>
                           <span className="font-medium">{formatNumber(backupStats.counts.syncAudits)}</span>
                         </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Stock Logs:</span>
+                          <span className="font-medium">{formatNumber(backupStats.counts.stockLogs)}</span>
+                        </div>
                         <div className="flex justify-between border-t pt-2">
                           <span className="text-gray-900 font-medium">Total Audit Records:</span>
                           <span className="font-bold">{formatNumber(backupStats.counts.totalAuditRecords)}</span>
@@ -448,6 +464,13 @@ export default function DataManagement() {
                           <div className="text-sm text-gray-600">
                             <div>Oldest: {formatDate(backupStats.dateRanges.syncAudits.oldest)}</div>
                             <div>Newest: {formatDate(backupStats.dateRanges.syncAudits.newest)}</div>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">Stock Logs</p>
+                          <div className="text-sm text-gray-600">
+                            <div>Oldest: {formatDate(backupStats.dateRanges.stockLogs.oldest)}</div>
+                            <div>Newest: {formatDate(backupStats.dateRanges.stockLogs.newest)}</div>
                           </div>
                         </div>
                       </div>

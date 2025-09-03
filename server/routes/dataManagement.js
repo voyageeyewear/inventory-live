@@ -3,6 +3,7 @@ const router = express.Router();
 const Product = require('../models/Product');
 const StockAudit = require('../models/StockAudit');
 const SyncAudit = require('../models/SyncAudit');
+const StockLog = require('../models/StockLog');
 const Store = require('../models/Store');
 const multer = require('multer');
 const fs = require('fs');
@@ -20,10 +21,11 @@ router.get('/backup', async (req, res) => {
     console.log('🔄 Starting comprehensive data backup...');
     
     // Get all audit and history data
-    const [products, stockAudits, syncAudits, stores] = await Promise.all([
+    const [products, stockAudits, syncAudits, stockLogs, stores] = await Promise.all([
       Product.find().lean(),
       StockAudit.find().lean(),
       SyncAudit.find().lean(),
+      StockLog.find().lean(),
       Store.find().lean()
     ]);
 
@@ -36,6 +38,7 @@ router.get('/backup', async (req, res) => {
           products: products.length,
           stockAudits: stockAudits.length,
           syncAudits: syncAudits.length,
+          stockLogs: stockLogs.length,
           stores: stores.length
         }
       },
@@ -43,11 +46,12 @@ router.get('/backup', async (req, res) => {
         products,
         stockAudits,
         syncAudits,
+        stockLogs,
         stores
       }
     };
 
-    console.log(`📊 Backup created with ${products.length} products, ${stockAudits.length} stock audits, ${syncAudits.length} sync audits, ${stores.length} stores`);
+    console.log(`📊 Backup created with ${products.length} products, ${stockAudits.length} stock audits, ${syncAudits.length} sync audits, ${stockLogs.length} stock logs, ${stores.length} stores`);
 
     // Set headers for file download
     const filename = `inventory_backup_${new Date().toISOString().split('T')[0]}.json`;
@@ -68,20 +72,26 @@ router.get('/backup-stats', async (req, res) => {
       productCount,
       stockAuditCount,
       syncAuditCount,
+      stockLogCount,
       storeCount,
       oldestStockAudit,
       oldestSyncAudit,
+      oldestStockLog,
       newestStockAudit,
-      newestSyncAudit
+      newestSyncAudit,
+      newestStockLog
     ] = await Promise.all([
       Product.countDocuments(),
       StockAudit.countDocuments(),
       SyncAudit.countDocuments(),
+      StockLog.countDocuments(),
       Store.countDocuments(),
       StockAudit.findOne().sort({ createdAt: 1 }).select('createdAt'),
       SyncAudit.findOne().sort({ createdAt: 1 }).select('createdAt'),
+      StockLog.findOne().sort({ timestamp: 1 }).select('timestamp'),
       StockAudit.findOne().sort({ createdAt: -1 }).select('createdAt'),
-      SyncAudit.findOne().sort({ createdAt: -1 }).select('createdAt')
+      SyncAudit.findOne().sort({ createdAt: -1 }).select('createdAt'),
+      StockLog.findOne().sort({ timestamp: -1 }).select('timestamp')
     ]);
 
     const stats = {
@@ -89,8 +99,9 @@ router.get('/backup-stats', async (req, res) => {
         products: productCount,
         stockAudits: stockAuditCount,
         syncAudits: syncAuditCount,
+        stockLogs: stockLogCount,
         stores: storeCount,
-        totalAuditRecords: stockAuditCount + syncAuditCount
+        totalAuditRecords: stockAuditCount + syncAuditCount + stockLogCount
       },
       dateRanges: {
         stockAudits: {
@@ -100,6 +111,10 @@ router.get('/backup-stats', async (req, res) => {
         syncAudits: {
           oldest: oldestSyncAudit?.createdAt || null,
           newest: newestSyncAudit?.createdAt || null
+        },
+        stockLogs: {
+          oldest: oldestStockLog?.timestamp || null,
+          newest: newestStockLog?.timestamp || null
         }
       }
     };
@@ -126,15 +141,17 @@ router.post('/reset-audit-data', async (req, res) => {
     console.log('🗑️ Starting audit data reset...');
     
     // Get counts before deletion for reporting
-    const [stockAuditCount, syncAuditCount] = await Promise.all([
+    const [stockAuditCount, syncAuditCount, stockLogCount] = await Promise.all([
       StockAudit.countDocuments(),
-      SyncAudit.countDocuments()
+      SyncAudit.countDocuments(),
+      StockLog.countDocuments()
     ]);
 
     // Delete all audit data
-    const [stockAuditResult, syncAuditResult] = await Promise.all([
+    const [stockAuditResult, syncAuditResult, stockLogResult] = await Promise.all([
       StockAudit.deleteMany({}),
-      SyncAudit.deleteMany({})
+      SyncAudit.deleteMany({}),
+      StockLog.deleteMany({})
     ]);
 
     // Reset sync-related fields in products (but keep inventory)
@@ -152,7 +169,7 @@ router.post('/reset-audit-data', async (req, res) => {
       { last_sync: null }
     );
 
-    console.log(`✅ Reset completed: ${stockAuditResult.deletedCount} stock audits, ${syncAuditResult.deletedCount} sync audits deleted`);
+    console.log(`✅ Reset completed: ${stockAuditResult.deletedCount} stock audits, ${syncAuditResult.deletedCount} sync audits, ${stockLogResult.deletedCount} stock logs deleted`);
 
     res.json({
       success: true,
@@ -160,7 +177,8 @@ router.post('/reset-audit-data', async (req, res) => {
       deletedRecords: {
         stockAudits: stockAuditResult.deletedCount,
         syncAudits: syncAuditResult.deletedCount,
-        totalDeleted: stockAuditResult.deletedCount + syncAuditResult.deletedCount
+        stockLogs: stockLogResult.deletedCount,
+        totalDeleted: stockAuditResult.deletedCount + syncAuditResult.deletedCount + stockLogResult.deletedCount
       },
       preserved: {
         products: await Product.countDocuments(),
@@ -195,7 +213,7 @@ router.post('/import-backup', upload.single('backupFile'), async (req, res) => {
       throw new Error('Invalid backup file structure');
     }
 
-    const { stockAudits, syncAudits } = backupData.data;
+    const { stockAudits, syncAudits, stockLogs } = backupData.data;
     
     if (!Array.isArray(stockAudits) || !Array.isArray(syncAudits)) {
       throw new Error('Invalid audit data in backup file');
@@ -204,6 +222,7 @@ router.post('/import-backup', upload.single('backupFile'), async (req, res) => {
     // Import audit data (skip products and stores to avoid conflicts)
     let importedStockAudits = 0;
     let importedSyncAudits = 0;
+    let importedStockLogs = 0;
 
     if (stockAudits.length > 0) {
       // Remove _id fields to avoid conflicts
@@ -227,10 +246,21 @@ router.post('/import-backup', upload.single('backupFile'), async (req, res) => {
       importedSyncAudits = syncResult.length;
     }
 
+    if (stockLogs && Array.isArray(stockLogs) && stockLogs.length > 0) {
+      // Remove _id fields to avoid conflicts
+      const cleanStockLogs = stockLogs.map(log => {
+        const { _id, __v, ...cleanLog } = log;
+        return cleanLog;
+      });
+      
+      const stockLogResult = await StockLog.insertMany(cleanStockLogs, { ordered: false });
+      importedStockLogs = stockLogResult.length;
+    }
+
     // Clean up uploaded file
     fs.unlinkSync(filePath);
 
-    console.log(`✅ Import completed: ${importedStockAudits} stock audits, ${importedSyncAudits} sync audits imported`);
+    console.log(`✅ Import completed: ${importedStockAudits} stock audits, ${importedSyncAudits} sync audits, ${importedStockLogs} stock logs imported`);
 
     res.json({
       success: true,
@@ -238,7 +268,8 @@ router.post('/import-backup', upload.single('backupFile'), async (req, res) => {
       importedRecords: {
         stockAudits: importedStockAudits,
         syncAudits: importedSyncAudits,
-        totalImported: importedStockAudits + importedSyncAudits
+        stockLogs: importedStockLogs,
+        totalImported: importedStockAudits + importedSyncAudits + importedStockLogs
       },
       backupMetadata: backupData.metadata
     });
@@ -266,38 +297,44 @@ router.get('/summary', async (req, res) => {
       totalStores,
       totalStockAudits,
       totalSyncAudits,
+      totalStockLogs,
       recentStockAudits,
       recentSyncAudits,
-      diskUsageEstimate
+      recentStockLogs
     ] = await Promise.all([
       Product.countDocuments(),
       Store.countDocuments(),
       StockAudit.countDocuments(),
       SyncAudit.countDocuments(),
+      StockLog.countDocuments(),
       StockAudit.countDocuments({ createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
-      SyncAudit.countDocuments({ createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } })
+      SyncAudit.countDocuments({ createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
+      StockLog.countDocuments({ timestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } })
     ]);
 
     // Estimate disk usage (rough calculation)
     const avgStockAuditSize = 200; // bytes
     const avgSyncAuditSize = 300; // bytes
-    const estimatedSize = (totalStockAudits * avgStockAuditSize) + (totalSyncAudits * avgSyncAuditSize);
+    const avgStockLogSize = 150; // bytes
+    const estimatedSize = (totalStockAudits * avgStockAuditSize) + (totalSyncAudits * avgSyncAuditSize) + (totalStockLogs * avgStockLogSize);
 
     const summary = {
       overview: {
         totalProducts,
         totalStores,
-        totalAuditRecords: totalStockAudits + totalSyncAudits,
+        totalAuditRecords: totalStockAudits + totalSyncAudits + totalStockLogs,
         estimatedSizeBytes: estimatedSize,
         estimatedSizeMB: Math.round(estimatedSize / 1024 / 1024 * 100) / 100
       },
       auditBreakdown: {
         stockAudits: totalStockAudits,
-        syncAudits: totalSyncAudits
+        syncAudits: totalSyncAudits,
+        stockLogs: totalStockLogs
       },
       recentActivity: {
         stockAuditsLast7Days: recentStockAudits,
-        syncAuditsLast7Days: recentSyncAudits
+        syncAuditsLast7Days: recentSyncAudits,
+        stockLogsLast7Days: recentStockLogs
       }
     };
 
