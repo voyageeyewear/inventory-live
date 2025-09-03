@@ -4,6 +4,7 @@ const Product = require('../models/Product');
 const StockAudit = require('../models/StockAudit');
 const upload = require('../middleware/upload');
 const { parseCSV, validateProductCSV } = require('../utils/csvParser');
+const { authenticateToken } = require('../middleware/auth');
 
 // Get all products
 router.get('/', async (req, res) => {
@@ -31,7 +32,7 @@ router.get('/sku/:sku', async (req, res) => {
 });
 
 // Upload products CSV
-router.post('/upload', upload.single('csv'), async (req, res) => {
+router.post('/upload', authenticateToken, upload.single('csv'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' });
@@ -168,7 +169,9 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
               reason: auditReason + ' - update',
               source: 'csv_upload',
               batch_id: batchId,
-              user_ip: req.ip || 'system'
+              user_ip: req.ip || 'system',
+              user_name: req.user?.username || 'system',
+              user_name: req.user?.username || 'system'
             });
             updatedCount++;
           } else if (isNewProduct) {
@@ -182,7 +185,8 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
               reason: auditReason + ' - new product',
               source: 'csv_upload',
               batch_id: batchId,
-              user_ip: req.ip || 'system'
+              user_ip: req.ip || 'system',
+              user_name: req.user?.username || 'system'
             });
             newCount++;
           } else if (isUpdate) {
@@ -197,7 +201,8 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
               reason: auditReason + ' - product info update',
               source: 'csv_upload',
               batch_id: batchId,
-              user_ip: req.ip || 'system'
+              user_ip: req.ip || 'system',
+              user_name: req.user?.username || 'system'
             });
             updatedCount++;
           }
@@ -282,7 +287,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Update a single product
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { product_name, quantity, image_url } = req.body;
@@ -421,7 +426,7 @@ router.post('/mark-all-synced', async (req, res) => {
 });
 
 // Delete a product
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     

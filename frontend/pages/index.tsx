@@ -4,6 +4,7 @@ import ProtectedRoute from '../components/ProtectedRoute'
 import { Upload, Package, Eye, RefreshCw, CheckSquare, Square, History, X, Edit, Save, Cancel, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
+import { useAuth } from '../contexts/AuthContext'
 
 interface Product {
   _id: string
@@ -32,6 +33,7 @@ export default function Products() {
     quantity: '',
     image_url: ''
   })
+  const { hasPermission } = useAuth()
 
   useEffect(() => {
     fetchProducts()
@@ -528,14 +530,16 @@ export default function Products() {
                                   <History className="h-4 w-4" />
                                   Audit
                                 </button>
-                                <button
-                                  onClick={() => handleDeleteProduct(product)}
-                                  className="text-red-600 hover:text-red-900 flex items-center gap-1"
-                                  title="Delete product (requires confirmation)"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                  Delete
-                                </button>
+                                {hasPermission('deleteProducts') && (
+                                  <button
+                                    onClick={() => handleDeleteProduct(product)}
+                                    className="text-red-600 hover:text-red-900 flex items-center gap-1"
+                                    title="Delete product (requires confirmation)"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                    Delete
+                                  </button>
+                                )}
                               </>
                             )}
                           </div>

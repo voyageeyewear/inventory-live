@@ -5,9 +5,10 @@ const StockLog = require('../models/StockLog');
 const StockAudit = require('../models/StockAudit');
 const upload = require('../middleware/upload');
 const { parseCSV, validateStockCSV } = require('../utils/csvParser');
+const { authenticateToken } = require('../middleware/auth');
 
 // Stock-In: Add inventory
-router.post('/in', upload.single('csv'), async (req, res) => {
+router.post('/in', authenticateToken, upload.single('csv'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' });
@@ -74,7 +75,8 @@ router.post('/in', upload.single('csv'), async (req, res) => {
           reason: 'Stock-in CSV upload',
           source: 'csv_upload',
           batch_id: `stock_in_${Date.now()}`,
-          user_ip: req.ip || 'system'
+          user_ip: req.ip || 'system',
+          user_name: req.user?.username || 'system'
         });
 
         successCount++;
@@ -97,7 +99,7 @@ router.post('/in', upload.single('csv'), async (req, res) => {
 });
 
 // Stock-Out: Remove inventory
-router.post('/out', upload.single('csv'), async (req, res) => {
+router.post('/out', authenticateToken, upload.single('csv'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' });
@@ -170,7 +172,8 @@ router.post('/out', upload.single('csv'), async (req, res) => {
           reason: 'Stock-out CSV upload',
           source: 'csv_upload',
           batch_id: `stock_out_${Date.now()}`,
-          user_ip: req.ip || 'system'
+          user_ip: req.ip || 'system',
+          user_name: req.user?.username || 'system'
         });
 
         successCount++;

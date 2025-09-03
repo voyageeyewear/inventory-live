@@ -44,6 +44,10 @@ const stockAuditSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  user_name: {
+    type: String,
+    default: 'system'
+  },
   notes: {
     type: String,
     default: null

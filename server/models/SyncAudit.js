@@ -55,6 +55,10 @@ const syncAuditSchema = new mongoose.Schema({
   sync_duration_ms: {
     type: Number,
     default: 0
+  },
+  user_name: {
+    type: String,
+    default: 'system'
   }
 }, {
   timestamps: true

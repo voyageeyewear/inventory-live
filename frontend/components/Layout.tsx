@@ -27,17 +27,17 @@ interface LayoutProps {
   children: React.ReactNode
 }
 
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: BarChart3 },
-  { name: 'Products', href: '/', icon: Package },
-  { name: 'Add Product', href: '/add-product', icon: Plus },
-  { name: 'Sync Activity', href: '/sync-activity', icon: Activity },
-  { name: 'Reports', href: '/reports', icon: FileText },
-  { name: 'Data Management', href: '/data-management', icon: Database },
-  { name: 'User Management', href: '/user-management', icon: Users },
-  { name: 'Stock-In', href: '/stock-in', icon: TrendingUp },
-  { name: 'Stock-Out', href: '/stock-out', icon: TrendingDown },
-  { name: 'Settings', href: '/settings', icon: Settings },
+const allNavigation = [
+  { name: 'Dashboard', href: '/dashboard', icon: BarChart3, permission: 'viewDashboard' },
+  { name: 'Products', href: '/', icon: Package, permission: 'viewProducts' },
+  { name: 'Add Product', href: '/add-product', icon: Plus, permission: 'addProducts' },
+  { name: 'Sync Activity', href: '/sync-activity', icon: Activity, permission: 'viewSyncActivity' },
+  { name: 'Reports', href: '/reports', icon: FileText, permission: 'viewReports' },
+  { name: 'Data Management', href: '/data-management', icon: Database, permission: 'viewDataManagement' },
+  { name: 'User Management', href: '/user-management', icon: Users, permission: 'viewUsers' },
+  { name: 'Stock-In', href: '/stock-in', icon: TrendingUp, permission: 'stockIn' },
+  { name: 'Stock-Out', href: '/stock-out', icon: TrendingDown, permission: 'stockOut' },
+  { name: 'Settings', href: '/settings', icon: Settings, permission: 'viewDashboard' }, // Basic permission for settings
 ]
 
 export default function Layout({ children }: LayoutProps) {
@@ -53,6 +53,9 @@ export default function Layout({ children }: LayoutProps) {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const router = useRouter()
   const { user, logout, hasPermission } = useAuth()
+
+  // Filter navigation based on user permissions
+  const navigation = allNavigation.filter(item => hasPermission(item.permission))
 
   // Fetch sync status
   const fetchSyncStatus = async () => {
@@ -282,8 +285,8 @@ export default function Layout({ children }: LayoutProps) {
               </h2>
             </div>
             <div className="flex items-center gap-x-4 lg:gap-x-6">
-              {/* Sync Status Indicator */}
-              {syncStatus.count > 0 ? (
+                          {/* Sync Status Indicator - Only show if user has sync permissions */}
+            {hasPermission('syncProducts') && syncStatus.count > 0 ? (
                 <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
                   <AlertCircle className="h-4 w-4 text-orange-500" />
                   <button
@@ -302,16 +305,18 @@ export default function Layout({ children }: LayoutProps) {
                     {loading ? 'Marking...' : 'Mark All'}
                   </button>
                 </div>
-              ) : (
+              ) : hasPermission('syncProducts') ? (
                 <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
                   <CheckCircle className="h-4 w-4 text-green-500" />
                   <span className="text-sm font-medium text-green-700">
                     All products synced
                   </span>
                 </div>
-              )}
+              ) : null}
 
-              <button
+              {/* Sync All Stores Button - Only show if user has sync permissions */}
+              {hasPermission('syncAllStores') && (
+                <button
                 onClick={handleSync}
                 disabled={syncing || syncStatus.count === 0}
                 className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -326,9 +331,10 @@ export default function Layout({ children }: LayoutProps) {
                 <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
                 {syncing ? 'Syncing...' : syncStatus.count > 0 ? `Sync ${syncStatus.count} Products` : 'All Synced'}
               </button>
+              )}
 
-              {/* Sync By Store Button */}
-              {syncStatus.count > 0 && (
+              {/* Sync By Store Button - Only show if user has sync permissions */}
+              {hasPermission('syncProducts') && syncStatus.count > 0 && (
                 <div className="relative">
                   <button
                     onClick={() => setShowStoreSync(!showStoreSync)}
