@@ -12,6 +12,8 @@ const syncRoutes = require('./routes/sync');
 const auditRoutes = require('./routes/audit');
 const reportsRoutes = require('./routes/reports');
 const dataManagementRoutes = require('./routes/dataManagement');
+const authRoutes = require('./routes/auth');
+const usersRoutes = require('./routes/users');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -39,6 +41,8 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/data-management', dataManagementRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/users', usersRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -63,6 +67,8 @@ app.get('/', (req, res) => {
       audit: '/api/audit',
       reports: '/api/reports',
       dataManagement: '/api/data-management',
+      auth: '/api/auth',
+      users: '/api/users',
       health: '/api/health'
     }
   });

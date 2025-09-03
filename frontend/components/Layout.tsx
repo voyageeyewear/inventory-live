@@ -14,7 +14,8 @@ import {
   AlertCircle,
   CheckCircle,
   FileText,
-  Database
+  Database,
+  Users
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
@@ -30,6 +31,7 @@ const navigation = [
   { name: 'Sync Activity', href: '/sync-activity', icon: Activity },
   { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Data Management', href: '/data-management', icon: Database },
+  { name: 'User Management', href: '/user-management', icon: Users },
   { name: 'Stock-In', href: '/stock-in', icon: TrendingUp },
   { name: 'Stock-Out', href: '/stock-out', icon: TrendingDown },
   { name: 'Settings', href: '/settings', icon: Settings },

@@ -12,5 +12,9 @@
     "install:all": "npm install && cd frontend && npm install && cd ../server && npm install",
     "backend": "cd server && npm run dev",
     "frontend": "cd frontend && npm run dev"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "jsonwebtoken": "^9.0.2"
   }
 }
