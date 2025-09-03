@@ -364,20 +364,62 @@ router.post('/', async (req, res) => {
             const shopifyProduct = await shopifyService.getProductBySku(product.sku);
             
             if (shopifyProduct) {
+              const startTime = Date.now();
+              
+              // Get current Shopify quantity before updating
+              const oldQuantity = shopifyProduct.variant.inventory_quantity;
+              
               // Update existing product inventory
               await shopifyService.updateInventoryQuantity(
                 shopifyProduct.variant.id, 
                 product.quantity
               );
+              
+              const syncDuration = Date.now() - startTime;
+              
               storeResult.updated++;
               totalUpdated++;
               successfullyUpdatedProducts.add(product.sku); // Track successful update
               console.log(`✅ Updated ${product.sku} to ${product.quantity} units`);
+              
+              // Log successful bulk sync
+              await SyncAudit.create({
+                sku: product.sku,
+                product_name: product.product_name,
+                store_name: store.store_name,
+                store_domain: store.store_domain,
+                action: 'sync_success',
+                old_quantity: oldQuantity,
+                new_quantity: product.quantity,
+                quantity_change: product.quantity - oldQuantity,
+                sync_type: 'full_sync',
+                shopify_product_id: shopifyProduct.product.id,
+                shopify_variant_id: shopifyProduct.variant.id,
+                sync_duration_ms: syncDuration
+              });
+              
             } else {
               // Product doesn't exist in this store - skip or create
               storeResult.skipped++;
               storeResult.errors.push(`Product with SKU ${product.sku} not found in store`);
               console.log(`⏭️ Skipped ${product.sku} (not found in store)`);
+              
+              // Log failed bulk sync
+              await SyncAudit.create({
+                sku: product.sku,
+                product_name: product.product_name,
+                store_name: store.store_name,
+                store_domain: store.store_domain,
+                action: 'sync_failed',
+                old_quantity: null,
+                new_quantity: product.quantity,
+                quantity_change: 0,
+                error_message: `Product with SKU "${product.sku}" not found in store`,
+                sync_type: 'full_sync',
+                shopify_product_id: null,
+                shopify_variant_id: null,
+                sync_duration_ms: 0
+              });
             }
             
             // Add delay to respect Shopify API rate limits (2 calls per second max)
@@ -391,6 +433,23 @@ router.post('/', async (req, res) => {
             storeResult.errors.push(`SKU ${product.sku}: ${error.message}`);
             totalErrors++;
             console.log(`❌ Error with ${product.sku}: ${error.message}`);
+            
+            // Log error in bulk sync
+            await SyncAudit.create({
+              sku: product.sku,
+              product_name: product.product_name,
+              store_name: store.store_name,
+              store_domain: store.store_domain,
+              action: 'sync_failed',
+              old_quantity: null,
+              new_quantity: product.quantity,
+              quantity_change: 0,
+              error_message: error.message,
+              sync_type: 'bulk_sync',
+              shopify_product_id: null,
+              shopify_variant_id: null,
+              sync_duration_ms: 0
+            });
             
             // Still add delay even on error to respect rate limits
             if (i < products.length - 1) {
