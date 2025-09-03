@@ -601,5 +601,193 @@ router.get('/status', async (req, res) => {
   }
 });
 
+// Sync products to a specific store only
+router.post('/store/:storeId', async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    
+    // Get the specific store
+    const store = await Store.findById(storeId);
+    if (!store) {
+      return res.status(404).json({ message: 'Store not found' });
+    }
+    
+    if (!store.connected) {
+      return res.status(400).json({ message: `Store "${store.store_name}" is not connected` });
+    }
+
+    // Get only products that need syncing
+    const products = await Product.find({ needs_sync: true });
+    
+    if (products.length === 0) {
+      return res.status(200).json({ 
+        message: 'No products need syncing. All products are up to date!',
+        storeUpdated: store.store_name,
+        totalProductsUpdated: 0,
+        totalErrors: 0,
+        results: []
+      });
+    }
+
+    console.log(`🔄 Starting sync to specific store: ${store.store_name} (${products.length} products)`);
+
+    let totalUpdated = 0;
+    let totalErrors = 0;
+    const successfullyUpdatedProducts = new Set();
+    
+    const storeResult = {
+      storeName: store.store_name,
+      storeDomain: store.store_domain,
+      updated: 0,
+      errors: [],
+      skipped: 0
+    };
+
+    try {
+      const shopifyService = new ShopifyService(store.store_domain, store.access_token);
+      
+      // Test connection first
+      const connectionTest = await shopifyService.testConnection();
+      if (!connectionTest.success) {
+        storeResult.errors.push('Connection failed: ' + connectionTest.error);
+        return res.status(400).json({
+          message: `Failed to connect to store "${store.store_name}"`,
+          error: connectionTest.error,
+          results: [storeResult]
+        });
+      }
+
+      // Process each product with rate limiting
+      for (let i = 0; i < products.length; i++) {
+        const product = products[i];
+        try {
+          console.log(`🔄 Processing ${product.sku} (${i + 1}/${products.length}) for ${store.store_name}`);
+          
+          // Find product in Shopify by SKU
+          const shopifyProduct = await shopifyService.getProductBySku(product.sku);
+          
+          if (shopifyProduct) {
+            const startTime = Date.now();
+            
+            // Get current Shopify quantity before updating
+            const oldQuantity = shopifyProduct.variant.inventory_quantity;
+            
+            // Update existing product inventory
+            await shopifyService.updateInventoryQuantity(
+              shopifyProduct.variant.id, 
+              product.quantity
+            );
+            
+            const syncDuration = Date.now() - startTime;
+            
+            storeResult.updated++;
+            totalUpdated++;
+            successfullyUpdatedProducts.add(product.sku);
+            console.log(`✅ Updated ${product.sku} to ${product.quantity} units`);
+            
+            // Log successful store-specific sync
+            await SyncAudit.create({
+              sku: product.sku,
+              product_name: product.product_name,
+              store_name: store.store_name,
+              store_domain: store.store_domain,
+              action: 'sync_success',
+              old_quantity: oldQuantity,
+              new_quantity: product.quantity,
+              quantity_change: product.quantity - oldQuantity,
+              sync_type: 'single_sync',
+              shopify_product_id: shopifyProduct.product.id,
+              shopify_variant_id: shopifyProduct.variant.id,
+              sync_duration_ms: syncDuration
+            });
+            
+          } else {
+            // Product doesn't exist in this store - skip
+            storeResult.skipped++;
+            storeResult.errors.push(`Product with SKU ${product.sku} not found in store`);
+            console.log(`⏭️ Skipped ${product.sku} (not found in store)`);
+            
+            // Log failed store-specific sync
+            await SyncAudit.create({
+              sku: product.sku,
+              product_name: product.product_name,
+              store_name: store.store_name,
+              store_domain: store.store_domain,
+              action: 'sync_failed',
+              old_quantity: null,
+              new_quantity: product.quantity,
+              quantity_change: 0,
+              error_message: `Product with SKU "${product.sku}" not found in store`,
+              sync_type: 'single_sync',
+              shopify_product_id: null,
+              shopify_variant_id: null,
+              sync_duration_ms: 0
+            });
+          }
+          
+          // Add delay to respect Shopify API rate limits
+          if (i < products.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 600));
+          }
+          
+        } catch (error) {
+          console.error(`Error syncing product ${product.sku} to ${store.store_name}:`, error);
+          storeResult.errors.push(`SKU ${product.sku}: ${error.message}`);
+          totalErrors++;
+          console.log(`❌ Error with ${product.sku}: ${error.message}`);
+          
+          // Log error in store-specific sync
+          await SyncAudit.create({
+            sku: product.sku,
+            product_name: product.product_name,
+            store_name: store.store_name,
+            store_domain: store.store_domain,
+            action: 'sync_failed',
+            old_quantity: null,
+            new_quantity: product.quantity,
+            quantity_change: 0,
+            error_message: error.message,
+            sync_type: 'single_sync',
+            shopify_product_id: null,
+            shopify_variant_id: null,
+            sync_duration_ms: 0
+          });
+          
+          // Still add delay even on error
+          if (i < products.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 600));
+          }
+        }
+      }
+
+      // Update last sync time for this store
+      store.last_sync = new Date();
+      await store.save();
+
+    } catch (error) {
+      console.error(`Error syncing to store ${store.store_name}:`, error);
+      storeResult.errors.push('Store sync failed: ' + error.message);
+      totalErrors++;
+    }
+
+    // Mark successfully synced products as no longer needing sync
+    // Note: Only mark as synced if this was the only store that needed syncing
+    // For now, we'll leave them as needing sync since other stores might still need them
+    
+    res.json({
+      message: `Sync to "${store.store_name}" completed. Updated ${totalUpdated} products`,
+      storeUpdated: store.store_name,
+      totalProductsUpdated: totalUpdated,
+      totalErrors,
+      results: [storeResult],
+      productsSynced: Array.from(successfullyUpdatedProducts)
+    });
+
+  } catch (error) {
+    console.error('Error during store-specific sync:', error);
+    res.status(500).json({ message: 'Store sync failed: ' + error.message });
+  }
+});
+
 module.exports = router;
 

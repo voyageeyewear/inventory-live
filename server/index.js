@@ -10,6 +10,7 @@ const stockLogsRoutes = require('./routes/stockLogs');
 const storesRoutes = require('./routes/stores');
 const syncRoutes = require('./routes/sync');
 const auditRoutes = require('./routes/audit');
+const reportsRoutes = require('./routes/reports');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -35,6 +36,7 @@ app.use('/api/stock-logs', stockLogsRoutes);
 app.use('/api/stores', storesRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/reports', reportsRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -57,6 +59,7 @@ app.get('/', (req, res) => {
       stores: '/api/stores',
       sync: '/api/sync',
       audit: '/api/audit',
+      reports: '/api/reports',
       health: '/api/health'
     }
   });

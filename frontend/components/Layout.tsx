@@ -12,7 +12,8 @@ import {
   Plus,
   Activity,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  FileText
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
@@ -26,6 +27,7 @@ const navigation = [
   { name: 'Products', href: '/', icon: Package },
   { name: 'Add Product', href: '/add-product', icon: Plus },
   { name: 'Sync Activity', href: '/sync-activity', icon: Activity },
+  { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Stock-In', href: '/stock-in', icon: TrendingUp },
   { name: 'Stock-Out', href: '/stock-out', icon: TrendingDown },
   { name: 'Settings', href: '/settings', icon: Settings },
@@ -37,6 +39,10 @@ export default function Layout({ children }: LayoutProps) {
   const [syncStatus, setSyncStatus] = useState({ count: 0, products: [] })
   const [loading, setLoading] = useState(false)
   const [showProductDetails, setShowProductDetails] = useState(false)
+  const [stores, setStores] = useState([])
+  const [selectedStore, setSelectedStore] = useState('')
+  const [showStoreSync, setShowStoreSync] = useState(false)
+  const [syncingStore, setSyncingStore] = useState(false)
   const router = useRouter()
 
   // Fetch sync status
@@ -75,9 +81,60 @@ export default function Layout({ children }: LayoutProps) {
     }
   }
 
-  // Load sync status on component mount and when router changes
+  // Fetch stores
+  const fetchStores = async () => {
+    try {
+      const response = await axios.get('/api/stores')
+      setStores(response.data.filter((store: any) => store.connected))
+    } catch (error) {
+      console.error('Error fetching stores:', error)
+    }
+  }
+
+  // Handle sync by store
+  const handleSyncByStore = async () => {
+    if (!selectedStore) {
+      toast.error('Please select a store first')
+      return
+    }
+
+    const store = stores.find((s: any) => s._id === selectedStore)
+    if (!store) {
+      toast.error('Selected store not found')
+      return
+    }
+
+    // Confirmation dialog
+    const confirm = window.confirm(
+      `🔄 SYNC TO SPECIFIC STORE\n\n` +
+      `This will sync ${syncStatus.count} products to:\n` +
+      `Store: ${(store as any).store_name}\n\n` +
+      `Are you sure you want to continue?`
+    )
+
+    if (!confirm) {
+      return
+    }
+
+    setSyncingStore(true)
+    toast.loading(`Syncing to ${(store as any).store_name}...`, { duration: 3000 })
+    
+    try {
+      const response = await axios.post(`/api/sync/store/${selectedStore}`)
+      toast.success(`✅ Successfully synced ${response.data.totalProductsUpdated} products to ${response.data.storeUpdated}`)
+      fetchSyncStatus() // Refresh sync status
+      setShowStoreSync(false) // Close the dropdown
+    } catch (error: any) {
+      toast.error(`❌ Sync failed: ${error.response?.data?.message || 'Unknown error'}`)
+    } finally {
+      setSyncingStore(false)
+    }
+  }
+
+  // Load sync status and stores on component mount and when router changes
   useEffect(() => {
     fetchSyncStatus()
+    fetchStores()
   }, [router.pathname])
 
   // Refresh sync status every 30 seconds
@@ -260,6 +317,57 @@ export default function Layout({ children }: LayoutProps) {
                 <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
                 {syncing ? 'Syncing...' : syncStatus.count > 0 ? `Sync ${syncStatus.count} Products` : 'All Synced'}
               </button>
+
+              {/* Sync By Store Button */}
+              {syncStatus.count > 0 && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowStoreSync(!showStoreSync)}
+                    disabled={syncingStore || stores.length === 0}
+                    className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl border-2 border-green-700"
+                    title="Sync to a specific store only"
+                  >
+                    <Package className="h-4 w-4" />
+                    Sync By Store
+                  </button>
+
+                  {/* Store Selection Dropdown */}
+                  {showStoreSync && (
+                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-md shadow-lg border border-gray-200 z-50">
+                      <div className="p-4">
+                        <h3 className="text-sm font-medium text-gray-900 mb-3">Select Store to Sync</h3>
+                        <select
+                          value={selectedStore}
+                          onChange={(e) => setSelectedStore(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="">Choose a store...</option>
+                          {stores.map((store: any) => (
+                            <option key={store._id} value={store._id}>
+                              {store.store_name} ({store.store_domain})
+                            </option>
+                          ))}
+                        </select>
+                        <div className="flex gap-2 mt-3">
+                          <button
+                            onClick={handleSyncByStore}
+                            disabled={!selectedStore || syncingStore}
+                            className="flex-1 px-3 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md disabled:bg-gray-400"
+                          >
+                            {syncingStore ? 'Syncing...' : `Sync ${syncStatus.count} Products`}
+                          </button>
+                          <button
+                            onClick={() => setShowStoreSync(false)}
+                            className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
