@@ -200,6 +200,11 @@ export default function Products() {
       toast.success('Product updated successfully!')
       setEditingProduct(null)
       fetchProducts() // Refresh the product list
+      
+      // Instantly refresh sync status
+      if ((window as any).refreshSyncStatus) {
+        (window as any).refreshSyncStatus()
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to update product')
     }

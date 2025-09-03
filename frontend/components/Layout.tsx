@@ -36,6 +36,7 @@ export default function Layout({ children }: LayoutProps) {
   const [syncing, setSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState({ count: 0, products: [] })
   const [loading, setLoading] = useState(false)
+  const [showProductDetails, setShowProductDetails] = useState(false)
   const router = useRouter()
 
   // Fetch sync status
@@ -47,6 +48,14 @@ export default function Layout({ children }: LayoutProps) {
       console.error('Error fetching sync status:', error)
     }
   }
+
+  // Make fetchSyncStatus available globally for instant updates
+  useEffect(() => {
+    (window as any).refreshSyncStatus = fetchSyncStatus
+    return () => {
+      delete (window as any).refreshSyncStatus
+    }
+  }, [])
 
   // Mark all products as synced
   const handleMarkAllSynced = async () => {
@@ -211,9 +220,13 @@ export default function Layout({ children }: LayoutProps) {
               {syncStatus.count > 0 ? (
                 <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
                   <AlertCircle className="h-4 w-4 text-orange-500" />
-                  <span className="text-sm font-medium text-orange-700">
+                  <button
+                    onClick={() => setShowProductDetails(true)}
+                    className="text-sm font-medium text-orange-700 hover:text-orange-800 underline"
+                    title="Click to see product details"
+                  >
                     {syncStatus.count} product{syncStatus.count !== 1 ? 's' : ''} need syncing
-                  </span>
+                  </button>
                   <button
                     onClick={handleMarkAllSynced}
                     disabled={loading}
@@ -258,6 +271,70 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </main>
       </div>
+
+      {/* Product Details Modal */}
+      {showProductDetails && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-screen items-center justify-center p-4">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={() => setShowProductDetails(false)} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-96 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-medium text-gray-900">
+                    Products Needing Sync ({syncStatus.count})
+                  </h3>
+                  <button
+                    onClick={() => setShowProductDetails(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
+              </div>
+              <div className="px-6 py-4 overflow-y-auto max-h-80">
+                <div className="space-y-3">
+                  {syncStatus.products.map((product: any) => (
+                    <div key={product._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">{product.product_name}</div>
+                        <div className="text-sm text-gray-500">SKU: {product.sku}</div>
+                        <div className="text-sm text-gray-500">
+                          Quantity: {product.quantity} | Last updated: {new Date(product.updatedAt).toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="ml-4">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                          Needs Sync
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowProductDetails(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowProductDetails(false)
+                      handleSync()
+                    }}
+                    disabled={syncing}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+                  >
+                    Sync {syncStatus.count} Products
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
