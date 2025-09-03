@@ -118,16 +118,36 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
         const isUpdate = !!existingProduct;
         const oldQuantity = existingProduct ? existingProduct.quantity : 0;
 
-        // Use upsert to update existing or create new, mark as needing sync
+        // Determine if this product actually needs syncing
+        const isNewProduct = !existingProduct;
+        const quantityChanged = existingProduct && existingProduct.quantity !== productData.quantity;
+        const nameChanged = existingProduct && existingProduct.product_name !== productData.product_name;
+        
+        // Handle image URL comparison properly (treat empty string, null, undefined as equivalent)
+        const normalizeImageUrl = (url) => url || '';
+        const existingImageUrl = normalizeImageUrl(existingProduct?.image_url);
+        const newImageUrl = normalizeImageUrl(productData.image_url);
+        const imageChanged = existingProduct && existingImageUrl !== newImageUrl;
+        
+        const actuallyChanged = isNewProduct || quantityChanged || nameChanged || imageChanged;
+        
+        // Use upsert to update existing or create new, only mark as needing sync if actually changed
         const updatedProduct = await Product.findOneAndUpdate(
           { sku: productData.sku },
           { 
             ...productData,
-            needs_sync: true,
-            last_synced: null
+            needs_sync: actuallyChanged,
+            last_synced: actuallyChanged ? null : (existingProduct?.last_synced || null)
           },
           { upsert: true, new: true }
         );
+
+        // Log what happened for debugging
+        if (actuallyChanged) {
+          console.log(`📝 Product ${productData.sku} marked for sync: ${isNewProduct ? 'new product' : 'changes detected'}`);
+        } else {
+          console.log(`⏭️ Product ${productData.sku} unchanged, not marked for sync`);
+        }
 
         // Create audit reason with duplicate info
         let auditReason = 'CSV upload';
@@ -135,35 +155,52 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
           auditReason += ` (aggregated from ${productData.duplicateRows.length} rows: ${productData.duplicateRows.join(', ')})`;
         }
 
-        // Log stock audit
-        if (isUpdate && oldQuantity !== productData.quantity) {
-          await StockAudit.create({
-            sku: productData.sku,
-            product_name: productData.product_name,
-            action: 'stock_update',
-            old_quantity: oldQuantity,
-            new_quantity: productData.quantity,
-            quantity_change: productData.quantity - oldQuantity,
-            reason: auditReason + ' - update',
-            source: 'csv_upload',
-            batch_id: batchId,
-            user_ip: req.ip || 'system'
-          });
-          updatedCount++;
-        } else if (!isUpdate) {
-          await StockAudit.create({
-            sku: productData.sku,
-            product_name: productData.product_name,
-            action: 'product_upload',
-            old_quantity: 0,
-            new_quantity: productData.quantity,
-            quantity_change: productData.quantity,
-            reason: auditReason + ' - new product',
-            source: 'csv_upload',
-            batch_id: batchId,
-            user_ip: req.ip || 'system'
-          });
-          newCount++;
+        // Log stock audit only for products that actually changed
+        if (actuallyChanged) {
+          if (isUpdate && quantityChanged) {
+            await StockAudit.create({
+              sku: productData.sku,
+              product_name: productData.product_name,
+              action: 'stock_update',
+              old_quantity: oldQuantity,
+              new_quantity: productData.quantity,
+              quantity_change: productData.quantity - oldQuantity,
+              reason: auditReason + ' - update',
+              source: 'csv_upload',
+              batch_id: batchId,
+              user_ip: req.ip || 'system'
+            });
+            updatedCount++;
+          } else if (isNewProduct) {
+            await StockAudit.create({
+              sku: productData.sku,
+              product_name: productData.product_name,
+              action: 'product_upload',
+              old_quantity: 0,
+              new_quantity: productData.quantity,
+              quantity_change: productData.quantity,
+              reason: auditReason + ' - new product',
+              source: 'csv_upload',
+              batch_id: batchId,
+              user_ip: req.ip || 'system'
+            });
+            newCount++;
+          } else if (isUpdate) {
+            // Product exists but non-quantity fields changed (name, image)
+            await StockAudit.create({
+              sku: productData.sku,
+              product_name: productData.product_name,
+              action: 'stock_update',
+              old_quantity: oldQuantity,
+              new_quantity: productData.quantity,
+              quantity_change: 0,
+              reason: auditReason + ' - product info update',
+              source: 'csv_upload',
+              batch_id: batchId,
+              user_ip: req.ip || 'system'
+            });
+            updatedCount++;
+          }
         }
 
         successCount++;
