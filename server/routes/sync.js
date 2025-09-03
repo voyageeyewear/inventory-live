@@ -345,9 +345,12 @@ router.post('/', async (req, res) => {
           continue;
         }
 
-        // Process each product
-        for (const product of products) {
+        // Process each product with rate limiting
+        for (let i = 0; i < products.length; i++) {
+          const product = products[i];
           try {
+            console.log(`🔄 Processing ${product.sku} (${i + 1}/${products.length}) for ${store.store_name}`);
+            
             // Find product in Shopify by SKU
             const shopifyProduct = await shopifyService.getProductBySku(product.sku);
             
@@ -359,15 +362,30 @@ router.post('/', async (req, res) => {
               );
               storeResult.updated++;
               totalUpdated++;
+              console.log(`✅ Updated ${product.sku} to ${product.quantity} units`);
             } else {
               // Product doesn't exist in this store - skip or create
               storeResult.skipped++;
               storeResult.errors.push(`Product with SKU ${product.sku} not found in store`);
+              console.log(`⏭️ Skipped ${product.sku} (not found in store)`);
             }
+            
+            // Add delay to respect Shopify API rate limits (2 calls per second max)
+            // Using 600ms delay to be safe (allows ~1.6 calls per second)
+            if (i < products.length - 1) { // Don't delay after the last product
+              await new Promise(resolve => setTimeout(resolve, 600));
+            }
+            
           } catch (error) {
             console.error(`Error syncing product ${product.sku} to ${store.store_name}:`, error);
             storeResult.errors.push(`SKU ${product.sku}: ${error.message}`);
             totalErrors++;
+            console.log(`❌ Error with ${product.sku}: ${error.message}`);
+            
+            // Still add delay even on error to respect rate limits
+            if (i < products.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 600));
+            }
           }
         }
 
@@ -382,6 +400,12 @@ router.post('/', async (req, res) => {
       }
 
       syncResults.push(storeResult);
+      
+      // Add delay between stores to further reduce API load
+      if (stores.indexOf(store) < stores.length - 1) { // Don't delay after the last store
+        console.log(`⏳ Waiting 1 second before processing next store...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     }
 
     res.json({
