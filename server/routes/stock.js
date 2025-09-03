@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Product = require('../models/Product');
 const StockLog = require('../models/StockLog');
+const StockAudit = require('../models/StockAudit');
 const upload = require('../middleware/upload');
 const { parseCSV, validateStockCSV } = require('../utils/csvParser');
 
@@ -47,15 +48,31 @@ router.post('/in', upload.single('csv'), async (req, res) => {
           continue;
         }
 
+        const oldQuantity = product.quantity;
+        
         // Update product quantity
         product.quantity += quantityToAdd;
         await product.save();
 
-        // Log the stock change
+        // Log the stock change in both models for backward compatibility
         await StockLog.create({
           sku,
           change: quantityToAdd,
           action: 'Stock-In'
+        });
+
+        // Log in StockAudit for dashboard
+        await StockAudit.create({
+          sku: product.sku,
+          product_name: product.product_name,
+          action: 'stock_in',
+          old_quantity: oldQuantity,
+          new_quantity: product.quantity,
+          quantity_change: quantityToAdd,
+          reason: 'Stock-in CSV upload',
+          source: 'csv_upload',
+          batch_id: `stock_in_${Date.now()}`,
+          user_ip: req.ip || 'system'
         });
 
         successCount++;
@@ -125,15 +142,31 @@ router.post('/out', upload.single('csv'), async (req, res) => {
           continue;
         }
 
+        const oldQuantity = product.quantity;
+
         // Update product quantity
         product.quantity -= quantityToRemove;
         await product.save();
 
-        // Log the stock change
+        // Log the stock change in both models for backward compatibility
         await StockLog.create({
           sku,
           change: quantityToRemove,
           action: 'Stock-Out'
+        });
+
+        // Log in StockAudit for dashboard
+        await StockAudit.create({
+          sku: product.sku,
+          product_name: product.product_name,
+          action: 'stock_out',
+          old_quantity: oldQuantity,
+          new_quantity: product.quantity,
+          quantity_change: -quantityToRemove, // Negative for stock out
+          reason: 'Stock-out CSV upload',
+          source: 'csv_upload',
+          batch_id: `stock_out_${Date.now()}`,
+          user_ip: req.ip || 'system'
         });
 
         successCount++;
