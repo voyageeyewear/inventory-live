@@ -50,8 +50,10 @@ router.post('/in', upload.single('csv'), async (req, res) => {
 
         const oldQuantity = product.quantity;
         
-        // Update product quantity
+        // Update product quantity and mark as needing sync
         product.quantity += quantityToAdd;
+        product.needs_sync = true;
+        product.last_synced = null;
         await product.save();
 
         // Log the stock change in both models for backward compatibility
@@ -144,8 +146,10 @@ router.post('/out', upload.single('csv'), async (req, res) => {
 
         const oldQuantity = product.quantity;
 
-        // Update product quantity
+        // Update product quantity and mark as needing sync
         product.quantity -= quantityToRemove;
+        product.needs_sync = true;
+        product.last_synced = null;
         await product.save();
 
         // Log the stock change in both models for backward compatibility
