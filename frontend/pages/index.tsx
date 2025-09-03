@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import Layout from '../components/Layout'
-import { Upload, Package, Eye, RefreshCw, CheckSquare, Square, History, X, Edit, Save, Cancel } from 'lucide-react'
+import { Upload, Package, Eye, RefreshCw, CheckSquare, Square, History, X, Edit, Save, Cancel, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
 
@@ -217,6 +217,51 @@ export default function Products() {
       quantity: '',
       image_url: ''
     })
+  }
+
+  const handleDeleteProduct = async (product: Product) => {
+    // Double confirmation for delete action
+    const firstConfirm = window.confirm(
+      `⚠️ DELETE PRODUCT WARNING ⚠️\n\n` +
+      `Are you sure you want to delete this product?\n\n` +
+      `Product: ${product.product_name}\n` +
+      `SKU: ${product.sku}\n` +
+      `Quantity: ${product.quantity}\n\n` +
+      `This action cannot be undone!`
+    )
+
+    if (!firstConfirm) {
+      return // User cancelled
+    }
+
+    // Second confirmation
+    const secondConfirm = window.confirm(
+      `🚨 FINAL CONFIRMATION 🚨\n\n` +
+      `This is your LAST CHANCE to cancel!\n\n` +
+      `Clicking 'OK' will permanently delete:\n` +
+      `"${product.product_name}" (${product.sku})\n\n` +
+      `✅ I understand this product will be permanently deleted\n` +
+      `✅ I understand this action cannot be undone\n` +
+      `✅ I want to proceed with deletion\n\n` +
+      `Are you absolutely sure?`
+    )
+
+    if (!secondConfirm) {
+      return // User cancelled
+    }
+
+    try {
+      await axios.delete(`/api/products/${product._id}`)
+      toast.success(`Product "${product.product_name}" deleted successfully!`)
+      fetchProducts() // Refresh the product list
+      
+      // Instantly refresh sync status
+      if ((window as any).refreshSyncStatus) {
+        (window as any).refreshSyncStatus()
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to delete product')
+    }
   }
 
   const handleEditInputChange = (field: string, value: string) => {
@@ -480,6 +525,14 @@ export default function Products() {
                                 >
                                   <History className="h-4 w-4" />
                                   Audit
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteProduct(product)}
+                                  className="text-red-600 hover:text-red-900 flex items-center gap-1"
+                                  title="Delete product (requires confirmation)"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  Delete
                                 </button>
                               </>
                             )}

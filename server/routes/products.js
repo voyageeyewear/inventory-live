@@ -383,5 +383,47 @@ router.post('/mark-all-synced', async (req, res) => {
   }
 });
 
+// Delete a product
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Get the product before deleting for audit purposes
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+    
+    // Delete the product
+    await Product.findByIdAndDelete(id);
+    
+    // Log the deletion in stock audit
+    await StockAudit.create({
+      sku: product.sku,
+      product_name: product.product_name,
+      action: 'product_deleted',
+      old_quantity: product.quantity,
+      new_quantity: 0,
+      quantity_change: -product.quantity,
+      reason: 'Product deleted by user',
+      source: 'manual_delete',
+      user_ip: req.ip || 'system'
+    });
+    
+    console.log(`🗑️ Product deleted: ${product.sku} - ${product.product_name}`);
+    
+    res.json({ 
+      message: 'Product deleted successfully',
+      deletedProduct: {
+        sku: product.sku,
+        product_name: product.product_name
+      }
+    });
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    res.status(500).json({ message: 'Failed to delete product' });
+  }
+});
+
 module.exports = router;
 
