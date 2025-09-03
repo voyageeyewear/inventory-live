@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
   const [formData, setFormData] = useState({
@@ -32,6 +33,14 @@ export default function Login() {
   });
   
   const router = useRouter();
+  const { login: authLogin, isAuthenticated } = useAuth();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/dashboard');
+    }
+  }, [isAuthenticated, router]);
 
   // Check if this is the first user setup
   useEffect(() => {
@@ -61,22 +70,14 @@ export default function Login() {
 
     setLoading(true);
     try {
-      const response = await axios.post('/api/auth/login', formData);
+      const success = await authLogin(formData.username, formData.password);
       
-      if (response.data.success) {
-        // Store token in localStorage
-        localStorage.setItem('token', response.data.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.data.user));
-        
-        // Set axios default header
-        axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.data.token}`;
-        
+      if (success) {
         toast.success('Login successful!');
         router.push('/dashboard');
       }
     } catch (error: any) {
-      const message = error.response?.data?.message || 'Login failed';
-      toast.error(message);
+      // Error handling is done in the auth context
     } finally {
       setLoading(false);
     }
@@ -113,15 +114,12 @@ export default function Login() {
       });
       
       if (response.data.success) {
-        // Store token in localStorage
-        localStorage.setItem('token', response.data.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.data.user));
-        
-        // Set axios default header
-        axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.data.token}`;
-        
         toast.success('Admin account created successfully!');
-        router.push('/dashboard');
+        // Use the auth login to set up the session
+        const success = await authLogin(registerData.username, registerData.password);
+        if (success) {
+          router.push('/dashboard');
+        }
       }
     } catch (error: any) {
       const message = error.response?.data?.message || 'Registration failed';

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
+import ProtectedRoute from '../components/ProtectedRoute';
 import { 
   Users,
   Plus,
@@ -280,7 +281,8 @@ export default function UserManagement() {
   };
 
   return (
-    <Layout>
+    <ProtectedRoute requiredPermission="viewUsers">
+      <Layout>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -712,5 +714,6 @@ export default function UserManagement() {
         )}
       </div>
     </Layout>
+    </ProtectedRoute>
   );
 }
