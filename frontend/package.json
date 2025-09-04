@@ -11,8 +11,11 @@
   "dependencies": {
     "@zxing/library": "^0.21.3",
     "axios": "^1.6.2",
+    "bcryptjs": "^2.4.3",
     "http-proxy-middleware": "^2.0.6",
+    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.294.0",
+    "mongodb": "^6.3.0",
     "next": "14.0.4",
     "react": "^18",
     "react-dom": "^18",

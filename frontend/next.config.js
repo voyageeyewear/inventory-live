@@ -1,30 +1,13 @@
 /** @type {import('next').NextConfig} */
-// Force rebuild - v2
+// Force rebuild - v3 - Using Vercel API Routes
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  async rewrites() {
-    // In development, proxy to local backend
-    if (process.env.NODE_ENV === 'development') {
-      return [
-        {
-          source: '/api/:path*',
-          destination: 'http://localhost:8080/api/:path*'
-        }
-      ]
-    }
-    // In production, proxy to external backend
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${process.env.BACKEND_URL || 'https://your-backend-url.com'}/api/:path*`
-      }
-    ]
-  },
+  // No rewrites needed - using built-in API routes
   env: {
     NEXT_PUBLIC_API_URL: process.env.NODE_ENV === 'production' 
-      ? process.env.BACKEND_URL || 'https://your-backend-url.com'
-      : 'http://localhost:8080'
+      ? '' // Use relative URLs in production (same domain)
+      : 'http://localhost:8080' // Still use local backend in development
   }
 }
 
