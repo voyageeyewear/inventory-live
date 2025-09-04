@@ -396,7 +396,7 @@ export default function Layout({ children }: LayoutProps) {
                 className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md"
               >
                 <UserIcon className="h-5 w-5" />
-                <span className="hidden md:block">{user?.firstName} {user?.lastName}</span>
+                <span className="hidden md:block">{user?.username}</span>
                 <span className="text-xs text-gray-500 hidden lg:block">({user?.role})</span>
               </button>
 
