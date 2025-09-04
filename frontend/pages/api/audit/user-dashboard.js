@@ -1,6 +1,5 @@
-import { connectToDatabase } from '../../../lib/mongodb'
+import { query } from '../../../lib/postgres'
 import jwt from 'jsonwebtoken'
-import { ObjectId } from 'mongodb'
 
 // Middleware to authenticate token
 const authenticateToken = async (req) => {
@@ -12,17 +11,14 @@ const authenticateToken = async (req) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-key-2024-production')
-    const { db } = await connectToDatabase()
     
-    const user = await db.collection('users').findOne({ 
-      _id: new ObjectId(decoded.id) 
-    })
+    const userResult = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.id])
 
-    if (!user || !user.isActive) {
+    if (userResult.rows.length === 0) {
       throw new Error('Invalid token or user inactive')
     }
 
-    return user
+    return userResult.rows[0]
   } catch (error) {
     throw new Error('Authentication failed')
   }
@@ -37,27 +33,27 @@ export default async function handler(req, res) {
     // Authenticate user
     const user = await authenticateToken(req)
     
-    const { db } = await connectToDatabase()
-    
     // Get user-specific stats
-    const userStockLogs = await db.collection('stocklogs')
-      .find({ user_id: new ObjectId(user._id) })
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .toArray()
+    const userStockLogsResult = await query(
+      'SELECT * FROM stock_logs WHERE user_id = $1 ORDER BY created_at DESC LIMIT 10',
+      [user.id]
+    )
     
-    const userScanLogs = await db.collection('scanlogs')
-      .find({ user_id: new ObjectId(user._id) })
-      .sort({ last_scanned: -1 })
-      .limit(5)
-      .toArray()
+    const userScanLogsResult = await query(
+      'SELECT * FROM scan_logs WHERE user_id = $1 ORDER BY last_scanned DESC LIMIT 5',
+      [user.id]
+    )
     
     // Count user activities
-    const totalScans = await db.collection('scanlogs')
-      .countDocuments({ user_id: new ObjectId(user._id) })
+    const totalScansResult = await query(
+      'SELECT COUNT(*) FROM scan_logs WHERE user_id = $1',
+      [user.id]
+    )
     
-    const totalStockActions = await db.collection('stocklogs')
-      .countDocuments({ user_id: new ObjectId(user._id) })
+    const totalStockActionsResult = await query(
+      'SELECT COUNT(*) FROM stock_logs WHERE user_id = $1',
+      [user.id]
+    )
     
     res.status(200).json({
       user: {
@@ -66,11 +62,11 @@ export default async function handler(req, res) {
         role: user.role
       },
       stats: {
-        totalScans,
-        totalStockActions
+        totalScans: parseInt(totalScansResult.rows[0].count),
+        totalStockActions: parseInt(totalStockActionsResult.rows[0].count)
       },
-      recentStockLogs: userStockLogs,
-      recentScanLogs: userScanLogs
+      recentStockLogs: userStockLogsResult.rows,
+      recentScanLogs: userScanLogsResult.rows
     })
   } catch (error) {
     console.error('User dashboard error:', error)

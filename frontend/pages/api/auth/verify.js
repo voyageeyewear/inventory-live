@@ -1,6 +1,5 @@
 import jwt from 'jsonwebtoken'
-import { connectToDatabase } from '../../../lib/mongodb'
-import { ObjectId } from 'mongodb'
+import { query } from '../../../lib/postgres'
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -14,26 +13,24 @@ export default async function handler(req, res) {
       return res.status(401).json({ message: 'No token provided' })
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key')
-    const { db } = await connectToDatabase()
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-key-2024-production')
     
-    const user = await db.collection('users').findOne({ 
-      _id: new ObjectId(decoded.id) 
-    })
+    const userResult = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.id])
 
-    if (!user || !user.isActive) {
+    if (userResult.rows.length === 0) {
       return res.status(401).json({ message: 'Invalid token or user inactive' })
     }
+
+    const user = userResult.rows[0]
 
     res.status(200).json({
       success: true,
       user: {
-        id: user._id,
+        id: user.id,
         username: user.username,
         email: user.email,
         role: user.role,
-        firstName: user.firstName,
-        lastName: user.lastName
+        permissions: user.permissions || []
       }
     })
   } catch (error) {
