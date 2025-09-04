@@ -4,17 +4,11 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 
 interface User {
-  _id: string;
+  id: number;
   username: string;
   email: string;
-  firstName: string;
-  lastName: string;
   role: 'admin' | 'manager' | 'user';
-  permissions: {
-    [key: string]: boolean;
-  };
-  isActive: boolean;
-  lastLogin: string | null;
+  permissions: string[];
 }
 
 interface AuthContextType {
@@ -104,7 +98,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       });
 
       if (response.data.success) {
-        const { user: userData, token: userToken } = response.data.data;
+        const { user: userData, token: userToken } = response.data;
         
         setUser(userData);
         setToken(userToken);
@@ -143,7 +137,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const hasPermission = (permission: string): boolean => {
-    return user?.permissions?.[permission] === true;
+    return user?.permissions?.includes(permission) === true;
   };
 
   const hasRole = (role: string | string[]): boolean => {
