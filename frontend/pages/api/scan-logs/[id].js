@@ -1,5 +1,4 @@
-import { connectToDatabase } from '../../../lib/mongodb'
-import { ObjectId } from 'mongodb'
+import { query } from '../../../lib/postgres'
 import jwt from 'jsonwebtoken'
 
 // Middleware to authenticate token
@@ -12,13 +11,11 @@ const authenticateToken = async (req) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-key-2024-production')
-    const { db } = await connectToDatabase()
     
-    const user = await db.collection('users').findOne({ 
-      _id: new ObjectId(decoded.id) 
-    })
+    const userResult = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.id])
+    const user = userResult.rows[0]
 
-    if (!user || !user.isActive) {
+    if (!user || !user.is_active) {
       throw new Error('Invalid token or user inactive')
     }
 
@@ -47,26 +44,16 @@ export default async function handler(req, res) {
             return res.status(400).json({ message: 'Valid quantity is required' })
           }
 
-          const result = await db.collection('scanlogs').updateOne(
-            { 
-              _id: new ObjectId(id),
-              user_id: new ObjectId(user._id)
-            },
-            {
-              $set: { 
-                quantity: quantity,
-                updatedAt: new Date()
-              }
-            }
+          const result = await query(
+            'UPDATE scan_logs SET quantity = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND user_id = $3 RETURNING *',
+            [quantity, id, user.id]
           )
           
-          if (result.matchedCount === 0) {
+          if (result.rows.length === 0) {
             return res.status(404).json({ message: 'Scan log not found' })
           }
           
-          const updatedScanLog = await db.collection('scanlogs').findOne({ 
-            _id: new ObjectId(id) 
-          })
+          const updatedScanLog = result.rows[0]
           
           res.status(200).json(updatedScanLog)
         } catch (error) {
@@ -77,12 +64,12 @@ export default async function handler(req, res) {
 
       case 'DELETE':
         try {
-          const result = await db.collection('scanlogs').deleteOne({
-            _id: new ObjectId(id),
-            user_id: new ObjectId(user._id)
-          })
+          const result = await query(
+            'DELETE FROM scan_logs WHERE id = $1 AND user_id = $2',
+            [id, user.id]
+          )
           
-          if (result.deletedCount === 0) {
+          if (result.rowCount === 0) {
             return res.status(404).json({ message: 'Scan log not found' })
           }
           

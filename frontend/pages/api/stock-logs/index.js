@@ -1,5 +1,4 @@
-import { connectToDatabase } from '../../../lib/mongodb'
-import { ObjectId } from 'mongodb'
+import { query } from '../../../lib/postgres'
 import jwt from 'jsonwebtoken'
 
 // Middleware to authenticate token
@@ -12,17 +11,14 @@ const authenticateToken = async (req) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-key-2024-production')
-    const { db } = await connectToDatabase()
     
-    const user = await db.collection('users').findOne({ 
-      _id: new ObjectId(decoded.id) 
-    })
+    const userResult = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.id])
 
-    if (!user || !user.isActive) {
+    if (userResult.rows.length === 0) {
       throw new Error('Invalid token or user inactive')
     }
 
-    return user
+    return userResult.rows[0]
   } catch (error) {
     throw new Error('Authentication failed')
   }
@@ -37,7 +33,6 @@ export default async function handler(req, res) {
     // Authenticate user
     const user = await authenticateToken(req)
     
-    const { db } = await connectToDatabase()
     const { 
       page = 1, 
       limit = 50, 
@@ -48,46 +43,58 @@ export default async function handler(req, res) {
     } = req.query
 
     // Build query
-    let query = {}
+    let queryText = 'SELECT * FROM stock_logs WHERE 1=1'
+    let queryParams = []
+    let paramCount = 0
     
     if (type && ['stock_in', 'stock_out'].includes(type)) {
-      query.type = type
+      paramCount++
+      queryText += ` AND type = $${paramCount}`
+      queryParams.push(type)
     }
     
     if (product_id) {
-      query.product_id = new ObjectId(product_id)
+      paramCount++
+      queryText += ` AND product_id = $${paramCount}`
+      queryParams.push(product_id)
     }
     
-    if (start_date || end_date) {
-      query.createdAt = {}
-      if (start_date) {
-        query.createdAt.$gte = new Date(start_date)
-      }
-      if (end_date) {
-        query.createdAt.$lte = new Date(end_date)
-      }
+    if (start_date) {
+      paramCount++
+      queryText += ` AND created_at >= $${paramCount}`
+      queryParams.push(start_date)
+    }
+    
+    if (end_date) {
+      paramCount++
+      queryText += ` AND created_at <= $${paramCount}`
+      queryParams.push(end_date)
     }
 
-    // Calculate pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit)
+    // Add pagination
+    queryText += ' ORDER BY created_at DESC'
+    
+    const offset = (parseInt(page) - 1) * parseInt(limit)
+    paramCount++
+    queryText += ` LIMIT $${paramCount}`
+    queryParams.push(parseInt(limit))
+    
+    paramCount++
+    queryText += ` OFFSET $${paramCount}`
+    queryParams.push(offset)
     
     // Get stock logs
-    const stockLogs = await db.collection('stocklogs')
-      .find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .toArray()
+    const result = await query(queryText, queryParams)
 
-    // Get total count
-    const totalCount = await db.collection('stocklogs').countDocuments(query)
+    // Get total count (simplified for now)
+    const countResult = await query('SELECT COUNT(*) FROM stock_logs')
     
     res.status(200).json({
-      stockLogs,
+      stockLogs: result.rows,
       pagination: {
         currentPage: parseInt(page),
-        totalPages: Math.ceil(totalCount / parseInt(limit)),
-        totalCount,
+        totalPages: Math.ceil(parseInt(countResult.rows[0].count) / parseInt(limit)),
+        totalCount: parseInt(countResult.rows[0].count),
         limit: parseInt(limit)
       }
     })

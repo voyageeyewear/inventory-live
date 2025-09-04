@@ -1,5 +1,4 @@
-import { connectToDatabase } from '../../../lib/mongodb'
-import { ObjectId } from 'mongodb'
+import { query } from '../../../lib/postgres'
 import jwt from 'jsonwebtoken'
 
 // Middleware to authenticate token
@@ -12,17 +11,14 @@ const authenticateToken = async (req) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-key-2024-production')
-    const { db } = await connectToDatabase()
     
-    const user = await db.collection('users').findOne({ 
-      _id: new ObjectId(decoded.id) 
-    })
+    const userResult = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.id])
 
-    if (!user || !user.isActive) {
+    if (userResult.rows.length === 0) {
       throw new Error('Invalid token or user inactive')
     }
 
-    return user
+    return userResult.rows[0]
   } catch (error) {
     throw new Error('Authentication failed')
   }
@@ -37,7 +33,6 @@ export default async function handler(req, res) {
     // Authenticate user
     const user = await authenticateToken(req)
     
-    const { db } = await connectToDatabase()
     const { productId, quantity, notes = '', store_id = null } = req.body
 
     if (!productId || !quantity || quantity <= 0) {
@@ -45,14 +40,13 @@ export default async function handler(req, res) {
     }
 
     // Find product
-    const product = await db.collection('products').findOne({ 
-      _id: new ObjectId(productId) 
-    })
+    const productResult = await query('SELECT * FROM products WHERE id = $1', [productId])
     
-    if (!product) {
+    if (productResult.rows.length === 0) {
       return res.status(404).json({ message: 'Product not found' })
     }
 
+    const product = productResult.rows[0]
     const currentQuantity = product.quantity || 0
     
     if (currentQuantity < quantity) {
@@ -64,45 +58,36 @@ export default async function handler(req, res) {
     // Update product quantity
     const newQuantity = currentQuantity - parseInt(quantity)
     
-    await db.collection('products').updateOne(
-      { _id: new ObjectId(productId) },
-      { 
-        $set: { 
-          quantity: newQuantity,
-          updatedAt: new Date()
-        }
-      }
+    await query(
+      'UPDATE products SET quantity = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [newQuantity, productId]
     )
 
     // Create stock log entry
-    const stockLog = {
-      product_id: new ObjectId(productId),
-      product_name: product.product_name,
-      sku: product.sku,
-      type: 'stock_out',
-      quantity: parseInt(quantity),
-      previous_quantity: currentQuantity,
-      new_quantity: newQuantity,
-      notes: notes,
-      store_id: store_id ? new ObjectId(store_id) : null,
-      user_id: new ObjectId(user._id),
-      user_name: user.username,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }
-
-    await db.collection('stocklogs').insertOne(stockLog)
+    await query(`
+      INSERT INTO stock_logs (product_id, product_name, sku, type, quantity, previous_quantity, new_quantity, notes, store_id, user_id, user_name)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `, [
+      productId,
+      product.product_name,
+      product.sku,
+      'stock_out',
+      parseInt(quantity),
+      currentQuantity,
+      newQuantity,
+      notes,
+      store_id,
+      user.id,
+      user.username
+    ])
 
     // Get updated product
-    const updatedProduct = await db.collection('products').findOne({ 
-      _id: new ObjectId(productId) 
-    })
+    const updatedProductResult = await query('SELECT * FROM products WHERE id = $1', [productId])
 
     res.status(200).json({
       success: true,
       message: 'Stock removed successfully',
-      product: updatedProduct,
-      stockLog
+      product: updatedProductResult.rows[0]
     })
   } catch (error) {
     console.error('Stock out error:', error)
