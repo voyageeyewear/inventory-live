@@ -17,7 +17,8 @@ import {
   Database,
   Users,
   LogOut,
-  User as UserIcon
+  User as UserIcon,
+  Scan
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
@@ -31,13 +32,14 @@ const allNavigation = [
   { name: 'Dashboard', href: '/dashboard', icon: BarChart3, permission: 'viewDashboard' },
   { name: 'Products', href: '/', icon: Package, permission: 'viewProducts' },
   { name: 'Add Product', href: '/add-product', icon: Plus, permission: 'addProducts' },
+  { name: 'Barcode Scan', href: '/barcode-scan', icon: Scan, permission: 'viewProducts' },
   { name: 'Sync Activity', href: '/sync-activity', icon: Activity, permission: 'viewSyncActivity' },
   { name: 'Reports', href: '/reports', icon: FileText, permission: 'viewReports' },
   { name: 'Data Management', href: '/data-management', icon: Database, permission: 'viewDataManagement' },
   { name: 'User Management', href: '/user-management', icon: Users, permission: 'viewUsers' },
   { name: 'Stock-In', href: '/stock-in', icon: TrendingUp, permission: 'stockIn' },
   { name: 'Stock-Out', href: '/stock-out', icon: TrendingDown, permission: 'stockOut' },
-  { name: 'Settings', href: '/settings', icon: Settings, permission: 'manageSettings' }, // Admin/Manager only
+  { name: 'Settings', href: '/settings', icon: Settings, permission: 'manageStores' }, // Admin/Manager only
 ]
 
 export default function Layout({ children }: LayoutProps) {

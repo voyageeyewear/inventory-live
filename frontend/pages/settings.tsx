@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import Layout from '../components/Layout'
+import ProtectedRoute from '../components/ProtectedRoute'
 import { Plus, Store, Trash2, ExternalLink, CheckCircle, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
@@ -83,7 +84,8 @@ export default function Settings() {
   }
 
   return (
-    <Layout>
+    <ProtectedRoute requiredPermission="manageStores">
+      <Layout>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -252,7 +254,8 @@ export default function Settings() {
           </div>
         </div>
       </div>
-    </Layout>
+      </Layout>
+    </ProtectedRoute>
   )
 }
 
