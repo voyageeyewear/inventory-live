@@ -5,18 +5,14 @@ import jwt from 'jsonwebtoken'
 const authenticateToken = async (req) => {
   const token = req.headers.authorization?.replace('Bearer ', '')
   
-  console.log('Stores API - Token received:', token ? token.substring(0, 20) + '...' : 'No token')
-  
   if (!token) {
     throw new Error('No token provided')
   }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-key-2024-production')
-    console.log('Stores API - Token decoded:', decoded)
     
     const userResult = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.id])
-    console.log('Stores API - User query result:', userResult.rows.length)
 
     if (userResult.rows.length === 0) {
       throw new Error('Invalid token or user inactive')
@@ -24,7 +20,6 @@ const authenticateToken = async (req) => {
 
     return userResult.rows[0]
   } catch (error) {
-    console.error('Stores API - Auth error:', error)
     throw new Error('Authentication failed')
   }
 }
@@ -33,10 +28,8 @@ export default async function handler(req, res) {
   const { method } = req
 
   try {
-    console.log('Stores API - Method:', method, 'Headers:', req.headers.authorization ? 'Has Auth' : 'No Auth')
     // Authenticate user
     const user = await authenticateToken(req)
-    console.log('Stores API - Authenticated user:', user.username)
 
     switch (method) {
       case 'GET':
