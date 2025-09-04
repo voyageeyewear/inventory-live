@@ -18,7 +18,8 @@ import {
   Users,
   LogOut,
   User as UserIcon,
-  Scan
+  Scan,
+  List
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
@@ -33,6 +34,7 @@ const allNavigation = [
   { name: 'Products', href: '/', icon: Package, permission: 'viewProducts' },
   { name: 'Add Product', href: '/add-product', icon: Plus, permission: 'addProducts' },
   { name: 'Barcode Scan', href: '/barcode-scan', icon: Scan, permission: 'viewProducts' },
+  { name: 'Scan List', href: '/scan-list', icon: List, permission: 'viewProducts' },
   { name: 'Sync Activity', href: '/sync-activity', icon: Activity, permission: 'viewSyncActivity' },
   { name: 'Reports', href: '/reports', icon: FileText, permission: 'viewReports' },
   { name: 'Data Management', href: '/data-management', icon: Database, permission: 'viewDataManagement' },

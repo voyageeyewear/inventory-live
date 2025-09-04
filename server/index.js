@@ -36,6 +36,7 @@ app.use((req, res, next) => {
 app.use('/api/products', productsRoutes);
 app.use('/api/stock', stockRoutes);
 app.use('/api/stock-logs', stockLogsRoutes);
+app.use('/api/scan-logs', require('./routes/scanLogs'));
 app.use('/api/stores', storesRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/audit', auditRoutes);
@@ -98,10 +99,11 @@ app.use('*', (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 API Documentation: http://localhost:${PORT}`);
   console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
+  console.log(`📱 Mobile Access: http://192.168.0.27:${PORT}`);
 });
 
 // Graceful shutdown

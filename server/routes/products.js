@@ -6,10 +6,24 @@ const upload = require('../middleware/upload');
 const { parseCSV, validateProductCSV } = require('../utils/csvParser');
 const { authenticateToken } = require('../middleware/auth');
 
-// Get all products
+// Get all products with optional search
 router.get('/', async (req, res) => {
   try {
-    const products = await Product.find().sort({ createdAt: -1 });
+    const { search } = req.query;
+    let query = {};
+    
+    if (search) {
+      // Search by SKU, product name, or category (case-insensitive)
+      query = {
+        $or: [
+          { sku: { $regex: search, $options: 'i' } },
+          { product_name: { $regex: search, $options: 'i' } },
+          { category: { $regex: search, $options: 'i' } }
+        ]
+      };
+    }
+    
+    const products = await Product.find(query).sort({ createdAt: -1 });
     res.json(products);
   } catch (error) {
     console.error('Error fetching products:', error);
