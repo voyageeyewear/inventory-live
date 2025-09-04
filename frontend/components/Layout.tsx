@@ -186,7 +186,7 @@ export default function Layout({ children }: LayoutProps) {
     );
 
     if (!secondConfirm) {
-      toast.info("Bulk sync cancelled by user");
+      toast("Bulk sync cancelled by user");
       return; // User cancelled on second confirmation
     }
 
