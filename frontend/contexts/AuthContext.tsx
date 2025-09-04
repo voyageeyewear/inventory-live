@@ -18,6 +18,7 @@ interface AuthContextType {
   logout: () => void;
   loading: boolean;
   isAuthenticated: boolean;
+  isFullyAuthenticated: boolean;
   hasPermission: (permission: string) => boolean;
   hasRole: (role: string | string[]) => boolean;
 }
@@ -76,11 +77,24 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const interceptor = axios.interceptors.response.use(
       (response) => response,
       (error) => {
-        if (error.response?.status === 401 && token) {
-          // Token expired or invalid
-          logout();
-          toast.error('Session expired. Please login again.');
-          router.push('/login');
+        console.log('Axios interceptor caught error:', {
+          status: error.response?.status,
+          url: error.config?.url,
+          hasToken: !!token,
+          message: error.response?.data?.message
+        });
+        
+        // Only logout on 401 for API routes that should be authenticated
+        if (error.response?.status === 401 && token && error.config?.url?.startsWith('/api/')) {
+          // Exclude login and setup endpoints from causing logout
+          if (!error.config.url.includes('/api/auth/login') && 
+              !error.config.url.includes('/api/setup') &&
+              !error.config.url.includes('/api/health')) {
+            console.log('Logging out due to 401 on authenticated endpoint:', error.config.url);
+            logout();
+            toast.error('Session expired. Please login again.');
+            router.push('/login');
+          }
         }
         return Promise.reject(error);
       }
@@ -152,6 +166,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const isAuthenticated = !!user && !!token;
+  const isFullyAuthenticated = !!user && !!token && !!axios.defaults.headers.common['Authorization'];
 
   const value: AuthContextType = {
     user,
@@ -160,6 +175,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     logout,
     loading,
     isAuthenticated,
+    isFullyAuthenticated,
     hasPermission,
     hasRole
   };

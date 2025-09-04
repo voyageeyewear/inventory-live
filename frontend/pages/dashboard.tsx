@@ -46,7 +46,7 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const { user, hasPermission, token } = useAuth();
+  const { user, hasPermission, token, isFullyAuthenticated } = useAuth();
 
   const fetchDashboardData = async () => {
     try {
@@ -63,11 +63,11 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (user && user.id && token) {
-      console.log('Dashboard: Making API call with token available');
+    if (isFullyAuthenticated) {
+      console.log('Dashboard: Making API call - fully authenticated');
       fetchDashboardData();
     }
-  }, [user, token]);
+  }, [isFullyAuthenticated]);
 
   if (loading) {
     return (

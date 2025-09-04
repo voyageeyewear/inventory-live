@@ -74,7 +74,10 @@ export default function Login() {
       
       if (success) {
         toast.success('Login successful!');
-        router.push('/dashboard');
+        // Small delay to ensure token is properly set in axios headers
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 100);
       }
     } catch (error: any) {
       // Error handling is done in the auth context

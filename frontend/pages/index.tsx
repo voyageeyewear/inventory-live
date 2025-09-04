@@ -33,14 +33,14 @@ export default function Products() {
     quantity: '',
     image_url: ''
   })
-  const { hasPermission, user, token } = useAuth()
+  const { hasPermission, user, token, isFullyAuthenticated } = useAuth()
 
   useEffect(() => {
-    if (user && user.id && token) {
-      console.log('Products: Making API call with token available');
+    if (isFullyAuthenticated) {
+      console.log('Products: Making API call - fully authenticated');
       fetchProducts()
     }
-  }, [user, token])
+  }, [isFullyAuthenticated])
 
   const fetchProducts = async () => {
     try {
