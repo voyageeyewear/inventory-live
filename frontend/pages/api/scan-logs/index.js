@@ -1,5 +1,4 @@
-import { connectToDatabase } from '../../../lib/mongodb'
-import { ObjectId } from 'mongodb'
+import { query } from '../../../lib/postgres'
 import jwt from 'jsonwebtoken'
 
 // Middleware to authenticate token
@@ -12,17 +11,14 @@ const authenticateToken = async (req) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-key-2024-production')
-    const { db } = await connectToDatabase()
     
-    const user = await db.collection('users').findOne({ 
-      _id: new ObjectId(decoded.id) 
-    })
+    const userResult = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.id])
 
-    if (!user || !user.isActive) {
+    if (userResult.rows.length === 0) {
       throw new Error('Invalid token or user inactive')
     }
 
-    return user
+    return userResult.rows[0]
   } catch (error) {
     throw new Error('Authentication failed')
   }
@@ -34,19 +30,18 @@ export default async function handler(req, res) {
   try {
     // Authenticate user
     const user = await authenticateToken(req)
-    
-    const { db } = await connectToDatabase()
 
     switch (method) {
       case 'GET':
         try {
           const { session_id = 'mobile-session' } = req.query
           
-          const scanLogs = await db.collection('scanlogs').find({
-            user_id: new ObjectId(user._id)
-          }).sort({ last_scanned: -1 }).toArray()
+          const result = await query(
+            'SELECT * FROM scan_logs WHERE user_id = $1 ORDER BY last_scanned DESC',
+            [user.id]
+          )
           
-          res.status(200).json(scanLogs)
+          res.status(200).json(result.rows)
         } catch (error) {
           console.error('Get scan logs error:', error)
           res.status(500).json({ message: 'Failed to fetch scan logs' })
@@ -62,51 +57,52 @@ export default async function handler(req, res) {
           }
 
           // Find product by SKU
-          const product = await db.collection('products').findOne({ sku })
-          if (!product) {
+          const productResult = await query('SELECT * FROM products WHERE sku = $1', [sku])
+          if (productResult.rows.length === 0) {
             return res.status(404).json({ message: 'Product not found' })
           }
 
-          // Check if scan log already exists
-          let scanLog = await db.collection('scanlogs').findOne({ 
-            user_id: new ObjectId(user._id), 
-            sku: sku 
-          })
+          const product = productResult.rows[0]
 
-          if (scanLog) {
+          // Check if scan log already exists
+          const existingLogResult = await query(
+            'SELECT * FROM scan_logs WHERE user_id = $1 AND sku = $2',
+            [user.id, sku]
+          )
+
+          let scanLog
+          if (existingLogResult.rows.length > 0) {
             // Update existing log
-            const result = await db.collection('scanlogs').updateOne(
-              { _id: scanLog._id },
-              {
-                $inc: { 
-                  quantity: quantity,
-                  scan_count: 1 
-                },
-                $set: { 
-                  last_scanned: new Date() 
-                }
-              }
-            )
+            const existingLog = existingLogResult.rows[0]
+            const newQuantity = existingLog.quantity + quantity
+            const newScanCount = existingLog.scan_count + 1
             
-            scanLog = await db.collection('scanlogs').findOne({ _id: scanLog._id })
+            const updateResult = await query(`
+              UPDATE scan_logs 
+              SET quantity = $1, scan_count = $2, last_scanned = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+              WHERE id = $3
+              RETURNING *
+            `, [newQuantity, newScanCount, existingLog.id])
+            
+            scanLog = updateResult.rows[0]
           } else {
             // Create new log
-            const newScanLog = {
-              sku: product.sku,
-              product_name: product.product_name,
-              quantity: quantity,
-              price: product.price || 0,
-              category: product.category || '',
-              user_id: new ObjectId(user._id),
-              session_id: session_id,
-              scan_count: 1,
-              last_scanned: new Date(),
-              createdAt: new Date(),
-              updatedAt: new Date()
-            }
+            const insertResult = await query(`
+              INSERT INTO scan_logs (sku, product_name, quantity, price, category, user_id, session_id, scan_count)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              RETURNING *
+            `, [
+              product.sku,
+              product.product_name,
+              quantity,
+              product.price || 0,
+              product.category || '',
+              user.id,
+              session_id,
+              1
+            ])
             
-            const result = await db.collection('scanlogs').insertOne(newScanLog)
-            scanLog = { ...newScanLog, _id: result.insertedId }
+            scanLog = insertResult.rows[0]
           }
           
           res.status(201).json({ 
@@ -122,12 +118,10 @@ export default async function handler(req, res) {
 
       case 'DELETE':
         try {
-          const result = await db.collection('scanlogs').deleteMany({
-            user_id: new ObjectId(user._id)
-          })
+          const result = await query('DELETE FROM scan_logs WHERE user_id = $1', [user.id])
           
           res.status(200).json({ 
-            message: `Deleted ${result.deletedCount} scan logs` 
+            message: `Deleted ${result.rowCount} scan logs` 
           })
         } catch (error) {
           console.error('Delete scan logs error:', error)
