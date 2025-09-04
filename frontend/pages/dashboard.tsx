@@ -5,66 +5,40 @@ import {
   TrendingUp, 
   TrendingDown, 
   Package, 
+  Users, 
   Store, 
   AlertTriangle,
   Activity,
-  Clock,
-  CheckCircle,
-  XCircle,
-  RefreshCw
+  RefreshCw,
+  XCircle
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import ProtectedRoute from '../components/ProtectedRoute';
 import UserDashboard from '../components/UserDashboard';
+import axios from 'axios';
 
 interface DashboardData {
-  overview: {
+  stats: {
     totalProducts: number;
+    totalUsers: number;
     totalStores: number;
-    connectedStores: number;
-    todaySync: number;
-    todayStock: number;
+    lowStockCount: number;
   };
-  syncStats: {
-    sync_success?: number;
-    sync_failed?: number;
-    sync_skipped?: number;
-  };
-  stockStats: {
-    stock_in?: { count: number; totalChange: number };
-    stock_out?: { count: number; totalChange: number };
-    stock_update?: { count: number; totalChange: number };
-  };
-  recentActivity: {
-    sync: Array<{
-      _id: string;
-      sku: string;
-      product_name: string;
-      action: string;
-      store_name: string;
-      new_quantity: number;
-      createdAt: string;
-    }>;
-    stock: Array<{
-      _id: string;
-      sku: string;
-      product_name: string;
-      action: string;
-      old_quantity: number;
-      new_quantity: number;
-      quantity_change: number;
-      createdAt: string;
-    }>;
-  };
+  recentActivity: Array<{
+    id: number;
+    sku: string;
+    product_name: string;
+    action: string;
+    old_quantity: number;
+    new_quantity: number;
+    quantity_change: number;
+    created_at: string;
+  }>;
   lowStockProducts: Array<{
-    _id: string;
+    id: number;
     sku: string;
     product_name: string;
     quantity: number;
-  }>;
-  dailyActivity: Array<{
-    _id: { date: string; action: string };
-    count: number;
   }>;
 }
 
@@ -77,16 +51,11 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/audit/dashboard');
-      const result = await response.json();
-      
-      if (result.success) {
-        setData(result.data);
-      } else {
-        setError(result.message || 'Failed to fetch dashboard data');
-      }
-    } catch (err) {
-      setError('Failed to fetch dashboard data');
+      const response = await axios.get('/api/audit/dashboard');
+      setData(response.data);
+      setError('');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to fetch dashboard data');
       console.error('Dashboard fetch error:', err);
     } finally {
       setLoading(false);
@@ -118,7 +87,7 @@ export default function Dashboard() {
           </div>
           <button 
             onClick={fetchDashboardData}
-            className="mt-2 btn-secondary"
+            className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
           >
             Retry
           </button>
@@ -135,20 +104,16 @@ export default function Dashboard() {
 
   const getActionColor = (action: string) => {
     switch (action) {
-      case 'sync_success': return 'text-green-600';
-      case 'sync_failed': return 'text-red-600';
-      case 'stock_in': return 'text-blue-600';
-      case 'stock_out': return 'text-orange-600';
+      case 'Stock-In': return 'text-green-600';
+      case 'Stock-Out': return 'text-red-600';
       default: return 'text-gray-600';
     }
   };
 
   const getActionIcon = (action: string) => {
     switch (action) {
-      case 'sync_success': return <CheckCircle className="h-4 w-4" />;
-      case 'sync_failed': return <XCircle className="h-4 w-4" />;
-      case 'stock_in': return <TrendingUp className="h-4 w-4" />;
-      case 'stock_out': return <TrendingDown className="h-4 w-4" />;
+      case 'Stock-In': return <TrendingUp className="h-4 w-4" />;
+      case 'Stock-Out': return <TrendingDown className="h-4 w-4" />;
       default: return <Activity className="h-4 w-4" />;
     }
   };
@@ -156,7 +121,7 @@ export default function Dashboard() {
   // Show user-specific dashboard for non-admin users
   if (user?.role === 'user') {
     return (
-      <ProtectedRoute requiredPermission="viewDashboard">
+      <ProtectedRoute>
         <Layout>
           <UserDashboard />
         </Layout>
@@ -166,7 +131,7 @@ export default function Dashboard() {
 
   // Show admin/manager dashboard
   return (
-    <ProtectedRoute requiredPermission="viewDashboard">
+    <ProtectedRoute>
       <Layout>
       <div className="space-y-6">
         {/* Header */}
@@ -177,7 +142,7 @@ export default function Dashboard() {
           </div>
           <button 
             onClick={fetchDashboardData}
-            className="btn-secondary flex items-center gap-2"
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2"
           >
             <RefreshCw className="h-4 w-4" />
             Refresh
@@ -185,12 +150,12 @@ export default function Dashboard() {
         </div>
 
         {/* Overview Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-white p-6 rounded-lg shadow-sm border">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Products</p>
-                <p className="text-2xl font-bold text-gray-900">{data.overview.totalProducts.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-gray-900">{data.stats.totalProducts.toLocaleString()}</p>
               </div>
               <Package className="h-8 w-8 text-blue-600" />
             </div>
@@ -199,32 +164,20 @@ export default function Dashboard() {
           <div className="bg-white p-6 rounded-lg shadow-sm border">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Connected Stores</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {data.overview.connectedStores}/{data.overview.totalStores}
-                </p>
+                <p className="text-sm font-medium text-gray-600">Total Users</p>
+                <p className="text-2xl font-bold text-gray-900">{data.stats.totalUsers}</p>
               </div>
-              <Store className="h-8 w-8 text-green-600" />
+              <Users className="h-8 w-8 text-green-600" />
             </div>
           </div>
 
           <div className="bg-white p-6 rounded-lg shadow-sm border">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Today's Syncs</p>
-                <p className="text-2xl font-bold text-gray-900">{data.overview.todaySync}</p>
+                <p className="text-sm font-medium text-gray-600">Total Stores</p>
+                <p className="text-2xl font-bold text-gray-900">{data.stats.totalStores}</p>
               </div>
-              <RefreshCw className="h-8 w-8 text-purple-600" />
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Stock Changes</p>
-                <p className="text-2xl font-bold text-gray-900">{data.overview.todayStock}</p>
-              </div>
-              <BarChart3 className="h-8 w-8 text-orange-600" />
+              <Store className="h-8 w-8 text-purple-600" />
             </div>
           </div>
 
@@ -232,92 +185,22 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Low Stock Items</p>
-                <p className="text-2xl font-bold text-gray-900">{data.lowStockProducts.length}</p>
+                <p className="text-2xl font-bold text-gray-900">{data.stats.lowStockCount}</p>
               </div>
               <AlertTriangle className="h-8 w-8 text-red-600" />
             </div>
           </div>
         </div>
 
-        {/* Sync Statistics */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Sync Statistics (Last 7 Days)</h3>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  <span className="text-gray-700">Successful Syncs</span>
-                </div>
-                <span className="font-semibold text-green-600">
-                  {data.syncStats.sync_success || 0}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <XCircle className="h-5 w-5 text-red-600" />
-                  <span className="text-gray-700">Failed Syncs</span>
-                </div>
-                <span className="font-semibold text-red-600">
-                  {data.syncStats.sync_failed || 0}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-gray-600" />
-                  <span className="text-gray-700">Skipped Syncs</span>
-                </div>
-                <span className="font-semibold text-gray-600">
-                  {data.syncStats.sync_skipped || 0}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Stock Movement (Last 7 Days)</h3>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-blue-600" />
-                  <span className="text-gray-700">Stock In</span>
-                </div>
-                <div className="text-right">
-                  <div className="font-semibold text-blue-600">
-                    {data.stockStats.stock_in?.count || 0} operations
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    +{data.stockStats.stock_in?.totalChange || 0} units
-                  </div>
-                </div>
-              </div>
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <TrendingDown className="h-5 w-5 text-orange-600" />
-                  <span className="text-gray-700">Stock Out</span>
-                </div>
-                <div className="text-right">
-                  <div className="font-semibold text-orange-600">
-                    {data.stockStats.stock_out?.count || 0} operations
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    {data.stockStats.stock_out?.totalChange || 0} units
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Recent Activity and Low Stock */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Recent Sync Activity */}
+          {/* Recent Stock Activity */}
           <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Sync Activity</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Stock Activity</h3>
             <div className="space-y-3 max-h-80 overflow-y-auto">
-              {data.recentActivity.sync.length > 0 ? (
-                data.recentActivity.sync.map((item) => (
-                  <div key={item._id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
+              {data.recentActivity.length > 0 ? (
+                data.recentActivity.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
                     <div className="flex items-center gap-3">
                       <div className={getActionColor(item.action)}>
                         {getActionIcon(item.action)}
@@ -328,13 +211,15 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-medium text-gray-900">{item.store_name}</p>
-                      <p className="text-xs text-gray-500">{formatDate(item.createdAt)}</p>
+                      <p className="text-sm font-medium text-gray-900">
+                        {item.quantity_change > 0 ? '+' : ''}{item.quantity_change}
+                      </p>
+                      <p className="text-xs text-gray-500">{formatDate(item.created_at)}</p>
                     </div>
                   </div>
                 ))
               ) : (
-                <p className="text-gray-500 text-center py-4">No recent sync activity</p>
+                <p className="text-gray-500 text-center py-4">No recent stock activity</p>
               )}
             </div>
           </div>
@@ -348,7 +233,7 @@ export default function Dashboard() {
             <div className="space-y-3 max-h-80 overflow-y-auto">
               {data.lowStockProducts.length > 0 ? (
                 data.lowStockProducts.map((product) => (
-                  <div key={product._id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
+                  <div key={product.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
                     <div>
                       <p className="font-medium text-gray-900 text-sm">{product.sku}</p>
                       <p className="text-xs text-gray-500 truncate max-w-48">{product.product_name}</p>
@@ -373,9 +258,9 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Recent Stock Activity */}
+        {/* Recent Stock Activity Table */}
         <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Stock Activity</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Stock Activity Details</h3>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -388,9 +273,9 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {data.recentActivity.stock.length > 0 ? (
-                  data.recentActivity.stock.map((item) => (
-                    <tr key={item._id}>
+                {data.recentActivity.length > 0 ? (
+                  data.recentActivity.map((item) => (
+                    <tr key={item.id}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
                           <div className="text-sm font-medium text-gray-900">{item.sku}</div>
@@ -400,7 +285,7 @@ export default function Dashboard() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className={`flex items-center gap-2 ${getActionColor(item.action)}`}>
                           {getActionIcon(item.action)}
-                          <span className="text-sm capitalize">{item.action.replace('_', ' ')}</span>
+                          <span className="text-sm">{item.action}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -414,7 +299,7 @@ export default function Dashboard() {
                         {item.new_quantity}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(item.createdAt)}
+                        {formatDate(item.created_at)}
                       </td>
                     </tr>
                   ))

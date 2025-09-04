@@ -30,18 +30,18 @@ interface LayoutProps {
 }
 
 const allNavigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: BarChart3, permission: 'viewDashboard' },
+  { name: 'Dashboard', href: '/dashboard', icon: BarChart3, permission: 'viewProducts' },
   { name: 'Products', href: '/', icon: Package, permission: 'viewProducts' },
-  { name: 'Add Product', href: '/add-product', icon: Plus, permission: 'addProducts' },
+  { name: 'Add Product', href: '/add-product', icon: Plus, permission: 'viewProducts' },
   { name: 'Barcode Scan', href: '/barcode-scan', icon: Scan, permission: 'viewProducts' },
   { name: 'Scan List', href: '/scan-list', icon: List, permission: 'viewProducts' },
-  { name: 'Sync Activity', href: '/sync-activity', icon: Activity, permission: 'viewSyncActivity' },
-  { name: 'Reports', href: '/reports', icon: FileText, permission: 'viewReports' },
-  { name: 'Data Management', href: '/data-management', icon: Database, permission: 'viewDataManagement' },
-  { name: 'User Management', href: '/user-management', icon: Users, permission: 'viewUsers' },
-  { name: 'Stock-In', href: '/stock-in', icon: TrendingUp, permission: 'stockIn' },
-  { name: 'Stock-Out', href: '/stock-out', icon: TrendingDown, permission: 'stockOut' },
-  { name: 'Settings', href: '/settings', icon: Settings, permission: 'manageStores' }, // Admin/Manager only
+  { name: 'Stock-In', href: '/stock-in', icon: TrendingUp, permission: 'viewProducts' },
+  { name: 'Stock-Out', href: '/stock-out', icon: TrendingDown, permission: 'viewProducts' },
+  { name: 'Data Management', href: '/data-management', icon: Database, permission: 'viewProducts' },
+  { name: 'Sync Activity', href: '/sync-activity', icon: Activity, permission: 'viewProducts' },
+  { name: 'Reports', href: '/reports', icon: FileText, permission: 'viewProducts' },
+  { name: 'User Management', href: '/user-management', icon: Users, permission: 'viewProducts' },
+  { name: 'Settings', href: '/settings', icon: Settings, permission: 'viewProducts' },
 ]
 
 export default function Layout({ children }: LayoutProps) {
