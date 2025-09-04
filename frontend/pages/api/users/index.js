@@ -1,5 +1,4 @@
-import { connectToDatabase } from '../../../lib/mongodb'
-import { ObjectId } from 'mongodb'
+import { query } from '../../../lib/postgres'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
 
@@ -13,17 +12,14 @@ const authenticateToken = async (req) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-key-2024-production')
-    const { db } = await connectToDatabase()
     
-    const user = await db.collection('users').findOne({ 
-      _id: new ObjectId(decoded.id) 
-    })
+    const userResult = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.id])
 
-    if (!user || !user.isActive) {
+    if (userResult.rows.length === 0) {
       throw new Error('Invalid token or user inactive')
     }
 
-    return user
+    return userResult.rows[0]
   } catch (error) {
     throw new Error('Authentication failed')
   }
@@ -46,10 +42,10 @@ export default async function handler(req, res) {
     switch (method) {
       case 'GET':
         try {
-          const users = await db.collection('users')
-            .find({}, { projection: { password: 0 } })
-            .sort({ createdAt: -1 })
-            .toArray()
+          const result = await query(
+            'SELECT id, username, email, role, permissions, is_active, created_by, created_at, updated_at FROM users ORDER BY created_at DESC'
+          )
+          const users = result.rows
           
           res.status(200).json(users)
         } catch (error) {
@@ -69,14 +65,12 @@ export default async function handler(req, res) {
           }
 
           // Check if user already exists
-          const existingUser = await db.collection('users').findOne({
-            $or: [
-              { username: username },
-              { email: email }
-            ]
-          })
+          const existingUserResult = await query(
+            'SELECT id FROM users WHERE username = $1 OR email = $2',
+            [username, email]
+          )
           
-          if (existingUser) {
+          if (existingUserResult.rows.length > 0) {
             return res.status(400).json({ 
               message: 'User with this username or email already exists' 
             })
@@ -85,23 +79,13 @@ export default async function handler(req, res) {
           // Hash password
           const hashedPassword = await bcrypt.hash(password, 12)
 
-          const newUser = {
-            username,
-            email,
-            password: hashedPassword,
-            role,
-            permissions,
-            isActive: true,
-            createdBy: new ObjectId(user._id),
-            createdAt: new Date(),
-            updatedAt: new Date()
-          }
-
-          const result = await db.collection('users').insertOne(newUser)
+          const result = await query(`
+            INSERT INTO users (username, email, password, role, permissions, is_active, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, username, email, role, permissions, is_active, created_by, created_at, updated_at
+          `, [username, email, hashedPassword, role, permissions, true, user.id])
           
-          // Return user without password
-          const { password: _, ...userResponse } = newUser
-          userResponse._id = result.insertedId
+          const userResponse = result.rows[0]
           
           res.status(201).json(userResponse)
         } catch (error) {

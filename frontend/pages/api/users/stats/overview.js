@@ -1,4 +1,4 @@
-import { connectToDatabase } from '../../../../lib/mongodb'
+import { query } from '../../../../lib/postgres'
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -6,17 +6,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { db } = await connectToDatabase()
-    
     // Get basic stats
-    const totalUsers = await db.collection('users').countDocuments()
-    const totalProducts = await db.collection('products').countDocuments()
-    const activeUsers = await db.collection('users').countDocuments({ isActive: true })
+    const totalUsersResult = await query('SELECT COUNT(*) FROM users WHERE is_active = true')
+    const totalProductsResult = await query('SELECT COUNT(*) FROM products WHERE is_active = true')
+    const activeUsersResult = await query('SELECT COUNT(*) FROM users WHERE is_active = true')
     
     res.status(200).json({
-      totalUsers,
-      totalProducts,
-      activeUsers,
+      totalUsers: parseInt(totalUsersResult.rows[0].count),
+      totalProducts: parseInt(totalProductsResult.rows[0].count),
+      activeUsers: parseInt(activeUsersResult.rows[0].count),
       totalStores: 0, // Placeholder
       recentActivity: []
     })

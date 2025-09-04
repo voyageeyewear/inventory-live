@@ -1,5 +1,4 @@
-import { connectToDatabase } from '../../../lib/mongodb'
-import { ObjectId } from 'mongodb'
+import { query } from '../../../lib/postgres'
 import jwt from 'jsonwebtoken'
 
 // Middleware to authenticate token
@@ -12,17 +11,14 @@ const authenticateToken = async (req) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-key-2024-production')
-    const { db } = await connectToDatabase()
     
-    const user = await db.collection('users').findOne({ 
-      _id: new ObjectId(decoded.id) 
-    })
+    const userResult = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.id])
 
-    if (!user || !user.isActive) {
+    if (userResult.rows.length === 0) {
       throw new Error('Invalid token or user inactive')
     }
 
-    return user
+    return userResult.rows[0]
   } catch (error) {
     throw new Error('Authentication failed')
   }
@@ -40,10 +36,10 @@ export default async function handler(req, res) {
     switch (method) {
       case 'GET':
         try {
-          const stores = await db.collection('stores')
-            .find({ isActive: true })
-            .sort({ name: 1 })
-            .toArray()
+          const result = await query(
+            'SELECT * FROM stores WHERE is_active = true ORDER BY name ASC'
+          )
+          const stores = result.rows
           
           res.status(200).json(stores)
         } catch (error) {
@@ -61,28 +57,22 @@ export default async function handler(req, res) {
           }
 
           // Check if store already exists
-          const existingStore = await db.collection('stores').findOne({ 
-            name: { $regex: new RegExp(`^${name}$`, 'i') } 
-          })
+          const existingStoreResult = await query(
+            'SELECT id FROM stores WHERE LOWER(name) = LOWER($1)',
+            [name]
+          )
           
-          if (existingStore) {
+          if (existingStoreResult.rows.length > 0) {
             return res.status(400).json({ message: 'Store with this name already exists' })
           }
 
-          const newStore = {
-            name,
-            address: address || '',
-            phone: phone || '',
-            email: email || '',
-            manager: manager || '',
-            isActive: true,
-            createdBy: new ObjectId(user._id),
-            createdAt: new Date(),
-            updatedAt: new Date()
-          }
-
-          const result = await db.collection('stores').insertOne(newStore)
-          const store = { ...newStore, _id: result.insertedId }
+          const result = await query(`
+            INSERT INTO stores (name, address, phone, email, manager, is_active, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING *
+          `, [name, address || '', phone || '', email || '', manager || '', true, user.id])
+          
+          const store = result.rows[0]
           
           res.status(201).json(store)
         } catch (error) {
