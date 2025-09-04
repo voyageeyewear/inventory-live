@@ -295,7 +295,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
             <div className="flex items-center gap-x-4 lg:gap-x-6">
                           {/* Sync Status Indicator - Only show if user has sync permissions */}
-            {hasPermission('syncProducts') && syncStatus.count > 0 ? (
+            {hasPermission('manageStores') && syncStatus.count > 0 ? (
                 <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
                   <AlertCircle className="h-4 w-4 text-orange-500" />
                   <button
@@ -314,7 +314,7 @@ export default function Layout({ children }: LayoutProps) {
                     {loading ? 'Marking...' : 'Mark All'}
                   </button>
                 </div>
-              ) : hasPermission('syncProducts') ? (
+              ) : hasPermission('manageStores') ? (
                 <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
                   <CheckCircle className="h-4 w-4 text-green-500" />
                   <span className="text-sm font-medium text-green-700">
@@ -324,7 +324,7 @@ export default function Layout({ children }: LayoutProps) {
               ) : null}
 
               {/* Sync All Stores Button - Only show if user has sync permissions */}
-              {hasPermission('syncAllStores') && (
+              {hasPermission('manageStores') && (
                 <button
                 onClick={handleSync}
                 disabled={syncing || syncStatus.count === 0}
@@ -343,7 +343,7 @@ export default function Layout({ children }: LayoutProps) {
               )}
 
               {/* Sync By Store Button - Only show if user has sync permissions */}
-              {hasPermission('syncProducts') && syncStatus.count > 0 && (
+              {hasPermission('manageStores') && syncStatus.count > 0 && (
                 <div className="relative">
                   <button
                     onClick={() => setShowStoreSync(!showStoreSync)}

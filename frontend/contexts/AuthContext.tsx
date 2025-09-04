@@ -72,7 +72,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     initAuth();
   }, []);
 
-  // Axios interceptor to handle token expiration
+  // Axios interceptor to handle token expiration - DISABLED for debugging
   useEffect(() => {
     const interceptor = axios.interceptors.response.use(
       (response) => response,
@@ -84,17 +84,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           message: error.response?.data?.message
         });
         
-        // Only logout on 401 for API routes that should be authenticated
+        // TEMPORARILY DISABLED - Only log errors, don't logout
+        // This helps identify which API calls are causing issues
         if (error.response?.status === 401 && token && error.config?.url?.startsWith('/api/')) {
-          // Exclude login and setup endpoints from causing logout
-          if (!error.config.url.includes('/api/auth/login') && 
-              !error.config.url.includes('/api/setup') &&
-              !error.config.url.includes('/api/health')) {
-            console.log('Logging out due to 401 on authenticated endpoint:', error.config.url);
-            logout();
-            toast.error('Session expired. Please login again.');
-            router.push('/login');
-          }
+          console.log('401 error detected but NOT logging out (debugging mode):', error.config.url);
+          // Don't logout automatically - let user stay logged in
         }
         return Promise.reject(error);
       }
