@@ -4,8 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // Use production URL when available, fallback to local development
-  static const String baseUrl = String.fromEnvironment('API_BASE_URL', 
-    defaultValue: 'https://local-inventory-management-system-lkvx9rk2a.vercel.app');
+  static const String baseUrl = String.fromEnvironment('API_BASE_URL',
+    defaultValue: 'https://local-inventory-management-system.vercel.app');
   
   // Get stored auth token
   Future<String?> getAuthToken() async {
