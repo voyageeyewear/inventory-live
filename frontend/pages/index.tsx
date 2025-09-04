@@ -7,7 +7,7 @@ import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
 
 interface Product {
-  _id: string
+  id: number
   sku: string
   product_name: string
   quantity: number
@@ -83,12 +83,13 @@ export default function Products() {
     }
   }
 
-  const handleSelectProduct = (productId: string) => {
+  const handleSelectProduct = (productId: number) => {
+    const productIdStr = productId.toString()
     const newSelected = new Set(selectedProducts)
-    if (newSelected.has(productId)) {
-      newSelected.delete(productId)
+    if (newSelected.has(productIdStr)) {
+      newSelected.delete(productIdStr)
     } else {
-      newSelected.add(productId)
+      newSelected.add(productIdStr)
     }
     setSelectedProducts(newSelected)
   }
@@ -97,7 +98,7 @@ export default function Products() {
     if (selectedProducts.size === filteredProducts.length) {
       setSelectedProducts(new Set())
     } else {
-      setSelectedProducts(new Set(filteredProducts.map(p => p._id)))
+      setSelectedProducts(new Set(filteredProducts.map(p => p.id.toString())))
     }
   }
 
@@ -110,7 +111,7 @@ export default function Products() {
     setSyncing(true)
     try {
       const selectedSkus = products
-        .filter(p => selectedProducts.has(p._id))
+        .filter(p => selectedProducts.has(p.id.toString()))
         .map(p => p.sku)
 
       const response = await axios.post('/api/sync/multi', { skus: selectedSkus })
@@ -177,7 +178,7 @@ export default function Products() {
   }
 
   const handleEditProduct = (product: Product) => {
-    setEditingProduct(product._id)
+    setEditingProduct(product.id.toString())
     setEditForm({
       product_name: product.product_name,
       quantity: product.quantity.toString(),
@@ -257,7 +258,7 @@ export default function Products() {
     }
 
     try {
-      await axios.delete(`/api/products/${product._id}`)
+      await axios.delete(`/api/products/${product.id}`)
       toast.success(`Product "${product.product_name}" deleted successfully!`)
       fetchProducts() // Refresh the product list
       
@@ -416,13 +417,13 @@ export default function Products() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {paginatedProducts.map((product) => (
-                      <tr key={product._id} className="hover:bg-gray-50">
+                      <tr key={product.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <button
-                            onClick={() => handleSelectProduct(product._id)}
+                            onClick={() => handleSelectProduct(product.id)}
                             className="text-gray-400 hover:text-gray-600"
                           >
-                            {selectedProducts.has(product._id) ? (
+                            {selectedProducts.has(product.id.toString()) ? (
                               <CheckSquare className="h-4 w-4 text-blue-600" />
                             ) : (
                               <Square className="h-4 w-4" />
@@ -430,7 +431,7 @@ export default function Products() {
                           </button>
                         </td>
                         <td className="px-6 py-4">
-                          {editingProduct === product._id ? (
+                          {editingProduct === product.id.toString() ? (
                             <input
                               type="text"
                               value={editForm.product_name}
@@ -447,7 +448,7 @@ export default function Products() {
                           <div className="text-sm text-gray-900 font-mono">{product.sku}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {editingProduct === product._id ? (
+                          {editingProduct === product.id.toString() ? (
                             <input
                               type="number"
                               value={editForm.quantity}
@@ -468,7 +469,7 @@ export default function Products() {
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {editingProduct === product._id ? (
+                          {editingProduct === product.id.toString() ? (
                             <input
                               type="url"
                               value={editForm.image_url}
@@ -492,10 +493,10 @@ export default function Products() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center gap-2">
-                            {editingProduct === product._id ? (
+                            {editingProduct === product.id.toString() ? (
                               <>
                                 <button
-                                  onClick={() => handleSaveEdit(product._id)}
+                                  onClick={() => handleSaveEdit(product.id.toString())}
                                   className="text-green-600 hover:text-green-900 flex items-center gap-1"
                                 >
                                   <Save className="h-4 w-4" />
