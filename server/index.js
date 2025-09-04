@@ -17,12 +17,22 @@ const usersRoutes = require('./routes/users');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // Connect to MongoDB
 connectDB();
 
 // Middleware
-app.use(cors());
+const corsOptions = {
+  origin: NODE_ENV === 'production' 
+    ? ['https://your-vercel-domain.vercel.app', 'https://local-inventory-management-system-lkvx9rk2a.vercel.app']
+    : ['http://localhost:3000', 'http://192.168.0.27:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

@@ -3,8 +3,9 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // Update this with your computer's IP address
-  static const String baseUrl = 'http://192.168.0.27:8080';
+  // Use production URL when available, fallback to local development
+  static const String baseUrl = String.fromEnvironment('API_BASE_URL', 
+    defaultValue: 'https://local-inventory-management-system-lkvx9rk2a.vercel.app');
   
   // Get stored auth token
   Future<String?> getAuthToken() async {
