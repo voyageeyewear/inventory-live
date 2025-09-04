@@ -48,34 +48,89 @@ export default async function handler(req, res) {
 
       case 'POST':
         try {
-          const { name, address, phone, email, manager } = req.body
+          const { store_name, store_domain, access_token, name, address, phone, email, manager } = req.body
           
-          if (!name) {
+          // Handle both Shopify store format and regular store format
+          const storeName = store_name || name
+          
+          if (!storeName) {
             return res.status(400).json({ message: 'Store name is required' })
           }
 
-          // Check if store already exists
-          const existingStoreResult = await query(
-            'SELECT id FROM stores WHERE LOWER(name) = LOWER($1)',
-            [name]
-          )
+          // For Shopify stores, also require domain and access token
+          if (store_domain && !access_token) {
+            return res.status(400).json({ message: 'Access token is required for Shopify stores' })
+          }
+
+          // Check if store already exists by name or domain
+          let existingStoreResult
+          if (store_domain) {
+            existingStoreResult = await query(
+              'SELECT id FROM stores WHERE LOWER(store_domain) = LOWER($1) OR LOWER(name) = LOWER($2)',
+              [store_domain, storeName]
+            )
+          } else {
+            existingStoreResult = await query(
+              'SELECT id FROM stores WHERE LOWER(name) = LOWER($1)',
+              [storeName]
+            )
+          }
           
           if (existingStoreResult.rows.length > 0) {
-            return res.status(400).json({ message: 'Store with this name already exists' })
+            return res.status(400).json({ message: 'Store with this name or domain already exists' })
+          }
+
+          // Test Shopify connection if it's a Shopify store
+          let connected = false
+          if (store_domain && access_token) {
+            try {
+              // Simple test to verify the access token works
+              const testResponse = await fetch(`https://${store_domain}/admin/api/2023-10/shop.json`, {
+                headers: {
+                  'X-Shopify-Access-Token': access_token,
+                  'Content-Type': 'application/json'
+                }
+              })
+              
+              if (testResponse.ok) {
+                connected = true
+              } else {
+                console.log('Shopify connection test failed:', testResponse.status)
+              }
+            } catch (testError) {
+              console.log('Shopify connection test error:', testError.message)
+            }
           }
 
           const result = await query(`
-            INSERT INTO stores (name, address, phone, email, manager, is_active, created_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO stores (name, store_name, store_domain, access_token, connected, address, phone, email, manager_id, is_active, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING *
-          `, [name, address || '', phone || '', email || '', manager || '', true, user.id])
+          `, [
+            storeName, 
+            storeName, 
+            store_domain || null, 
+            access_token || null, 
+            connected,
+            address || '', 
+            phone || '', 
+            email || '', 
+            manager || null, 
+            true, 
+            user.id
+          ])
           
           const store = result.rows[0]
           
-          res.status(201).json(store)
+          res.status(201).json({ 
+            success: true, 
+            message: connected ? 'Shopify store connected successfully' : 'Store added successfully', 
+            store,
+            connected 
+          })
         } catch (error) {
           console.error('Create store error:', error)
-          res.status(500).json({ message: 'Failed to create store' })
+          res.status(500).json({ message: 'Failed to create store: ' + error.message })
         }
         break
 

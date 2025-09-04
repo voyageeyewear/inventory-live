@@ -1,10 +1,38 @@
 import { query } from '../../../lib/postgres'
+import jwt from 'jsonwebtoken'
+
+// Middleware to authenticate token
+const authenticateToken = async (req) => {
+  const token = req.headers.authorization?.replace('Bearer ', '')
+  
+  if (!token) {
+    throw new Error('No token provided')
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-key-2024-production')
+    
+    const userResult = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.id])
+
+    if (userResult.rows.length === 0) {
+      throw new Error('Invalid token or user inactive')
+    }
+
+    return userResult.rows[0]
+  } catch (error) {
+    throw new Error('Authentication failed')
+  }
+}
 
 export default async function handler(req, res) {
   const { method } = req
   const { id } = req.query
 
   try {
+    // Authenticate user for PUT and DELETE operations
+    if (method === 'PUT' || method === 'DELETE') {
+      await authenticateToken(req)
+    }
     switch (method) {
       case 'GET':
         try {
@@ -68,6 +96,12 @@ export default async function handler(req, res) {
     }
   } catch (error) {
     console.error('Product API error:', error)
-    res.status(500).json({ message: 'Internal server error' })
+    
+    // Handle authentication errors
+    if (error.message === 'No token provided' || error.message === 'Authentication failed') {
+      return res.status(401).json({ message: 'Authentication required' })
+    }
+    
+    res.status(500).json({ message: 'Internal server error: ' + error.message })
   }
 }

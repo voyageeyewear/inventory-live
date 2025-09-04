@@ -89,15 +89,41 @@ export async function initializeDatabase() {
       CREATE TABLE IF NOT EXISTS stores (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
+        store_name VARCHAR(255),
+        store_domain VARCHAR(255),
+        access_token VARCHAR(500),
+        connected BOOLEAN DEFAULT false,
         address TEXT,
         phone VARCHAR(50),
         email VARCHAR(255),
-        manager VARCHAR(255),
+        manager_id INTEGER REFERENCES users(id),
         is_active BOOLEAN DEFAULT true,
         created_by INTEGER REFERENCES users(id),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `)
+
+    // Add missing columns if they don't exist (for existing databases)
+    await query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'stores' AND column_name = 'store_name') THEN
+          ALTER TABLE stores ADD COLUMN store_name VARCHAR(255);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'stores' AND column_name = 'store_domain') THEN
+          ALTER TABLE stores ADD COLUMN store_domain VARCHAR(255);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'stores' AND column_name = 'access_token') THEN
+          ALTER TABLE stores ADD COLUMN access_token VARCHAR(500);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'stores' AND column_name = 'connected') THEN
+          ALTER TABLE stores ADD COLUMN connected BOOLEAN DEFAULT false;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'stores' AND column_name = 'manager_id') THEN
+          ALTER TABLE stores ADD COLUMN manager_id INTEGER REFERENCES users(id);
+        END IF;
+      END $$;
     `)
 
     // Create stock_logs table
