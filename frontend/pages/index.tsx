@@ -33,11 +33,13 @@ export default function Products() {
     quantity: '',
     image_url: ''
   })
-  const { hasPermission } = useAuth()
+  const { hasPermission, user } = useAuth()
 
   useEffect(() => {
-    fetchProducts()
-  }, [])
+    if (user && user.id) {
+      fetchProducts()
+    }
+  }, [user])
 
   const fetchProducts = async () => {
     try {

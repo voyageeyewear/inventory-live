@@ -149,15 +149,19 @@ export default function Layout({ children }: LayoutProps) {
 
   // Load sync status and stores on component mount and when router changes
   useEffect(() => {
-    fetchSyncStatus()
-    fetchStores()
-  }, [router.pathname])
+    if (user && user.id) {
+      fetchSyncStatus()
+      fetchStores()
+    }
+  }, [router.pathname, user])
 
   // Refresh sync status every 30 seconds
   useEffect(() => {
-    const interval = setInterval(fetchSyncStatus, 30000)
-    return () => clearInterval(interval)
-  }, [])
+    if (user && user.id) {
+      const interval = setInterval(fetchSyncStatus, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [user])
 
   const handleSync = async () => {
     // First confirmation with warning

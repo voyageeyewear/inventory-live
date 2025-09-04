@@ -63,8 +63,10 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    if (user && user.id) {
+      fetchDashboardData();
+    }
+  }, [user]);
 
   if (loading) {
     return (
