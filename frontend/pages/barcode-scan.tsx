@@ -102,7 +102,8 @@ export default function BarcodeScan() {
                   context.drawImage(img, 0, 0)
                   
                   try {
-                    const result = await codeReader.current?.decodeFromCanvas(canvas)
+                    // Use decodeFromImageElement with the image directly
+                    const result = await codeReader.current?.decodeFromImageElement?.(img)
                     if (result) {
                       const code = result.getText()
                       console.log('Barcode detected:', code)
