@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import Layout from '../components/Layout'
 import ProtectedRoute from '../components/ProtectedRoute'
-import { Upload, Package, Eye, RefreshCw, CheckSquare, Square, History, X, Edit, Save, Cancel, Trash2 } from 'lucide-react'
+import { Upload, Package, Eye, RefreshCw, CheckSquare, Square, History, X, Edit, Save, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
