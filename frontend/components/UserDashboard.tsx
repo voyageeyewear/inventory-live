@@ -105,7 +105,7 @@ export default function UserDashboard() {
         <div className="flex items-center gap-3">
           <User className="h-8 w-8" />
           <div>
-            <h1 className="text-2xl font-bold">Welcome back, {user?.firstName}!</h1>
+            <h1 className="text-2xl font-bold">Welcome back, {user?.username}!</h1>
             <p className="text-blue-100">Here's your inventory activity overview</p>
           </div>
         </div>
