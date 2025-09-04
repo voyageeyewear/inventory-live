@@ -3,7 +3,6 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   async rewrites() {
-    // In production, API calls will be handled by Vercel functions
     // In development, proxy to local backend
     if (process.env.NODE_ENV === 'development') {
       return [
@@ -13,11 +12,17 @@ const nextConfig = {
         }
       ]
     }
-    return []
+    // In production, proxy to external backend
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${process.env.BACKEND_URL || 'https://your-backend-url.com'}/api/:path*`
+      }
+    ]
   },
   env: {
     NEXT_PUBLIC_API_URL: process.env.NODE_ENV === 'production' 
-      ? '' // Use relative URLs in production (same domain)
+      ? process.env.BACKEND_URL || 'https://your-backend-url.com'
       : 'http://localhost:8080'
   }
 }
