@@ -56,7 +56,7 @@ export default function Layout({ children }: LayoutProps) {
   const [syncingStore, setSyncingStore] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const router = useRouter()
-  const { user, logout, hasPermission } = useAuth()
+  const { user, logout, hasPermission, token } = useAuth()
 
   // Filter navigation based on user permissions
   const navigation = allNavigation.filter(item => hasPermission(item.permission))
@@ -149,19 +149,20 @@ export default function Layout({ children }: LayoutProps) {
 
   // Load sync status and stores on component mount and when router changes
   useEffect(() => {
-    if (user && user.id) {
+    if (user && user.id && token) {
+      console.log('Layout: Making API calls with token available');
       fetchSyncStatus()
       fetchStores()
     }
-  }, [router.pathname, user])
+  }, [router.pathname, user, token])
 
   // Refresh sync status every 30 seconds
   useEffect(() => {
-    if (user && user.id) {
+    if (user && user.id && token) {
       const interval = setInterval(fetchSyncStatus, 30000)
       return () => clearInterval(interval)
     }
-  }, [user])
+  }, [user, token])
 
   const handleSync = async () => {
     // First confirmation with warning

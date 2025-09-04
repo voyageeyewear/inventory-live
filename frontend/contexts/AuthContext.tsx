@@ -56,6 +56,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           
           // Set axios default header
           axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+          console.log('Auth initialized with token:', storedToken.substring(0, 20) + '...');
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
@@ -100,6 +101,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       if (response.data.success) {
         const { user: userData, token: userToken } = response.data;
         
+        console.log('Login successful, setting token:', userToken.substring(0, 20) + '...');
+        
         setUser(userData);
         setToken(userToken);
         
@@ -109,6 +112,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         
         // Set axios default header
         axios.defaults.headers.common['Authorization'] = `Bearer ${userToken}`;
+        console.log('Axios headers set:', axios.defaults.headers.common['Authorization']?.substring(0, 30) + '...');
         
         return true;
       }
