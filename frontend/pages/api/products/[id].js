@@ -28,9 +28,12 @@ export default async function handler(req, res) {
   const { method } = req
   const { id } = req.query
 
+  console.log(`Products [id] API called: method=${method}, id=${id}`)
+
   try {
     // Authenticate user for PUT and DELETE operations
     if (method === 'PUT' || method === 'DELETE') {
+      console.log('Authenticating user for', method, 'operation')
       await authenticateToken(req)
     }
     switch (method) {
