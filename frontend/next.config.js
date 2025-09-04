@@ -1,4 +1,5 @@
 /** @type {import('next').NextConfig} */
+// Force rebuild - v2
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
