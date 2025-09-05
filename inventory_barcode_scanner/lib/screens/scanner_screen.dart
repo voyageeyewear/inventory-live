@@ -12,11 +12,22 @@ class ScannerScreen extends StatefulWidget {
 }
 
 class _ScannerScreenState extends State<ScannerScreen> {
-  final MobileScannerController _controller = MobileScannerController();
+  final MobileScannerController _controller = MobileScannerController(
+    detectionSpeed: DetectionSpeed.noDuplicates,
+    facing: CameraFacing.back,
+    torchEnabled: false,
+  );
   final ApiService _apiService = ApiService();
   bool _isScanning = true;
   bool _isLoading = false;
   String? _scannedCode;
+  bool _permissionGranted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _requestCameraPermission();
+  }
 
   @override
   void dispose() {
@@ -24,16 +35,41 @@ class _ScannerScreenState extends State<ScannerScreen> {
     super.dispose();
   }
 
+  Future<void> _requestCameraPermission() async {
+    try {
+      // The mobile_scanner package handles permissions automatically
+      // But we can add manual permission handling if needed
+      setState(() {
+        _permissionGranted = true;
+      });
+    } catch (e) {
+      print('Permission error: $e');
+      _showErrorDialog('Permission Error', 'Camera permission is required to scan barcodes.');
+    }
+  }
+
   void _onDetect(BarcodeCapture capture) async {
-    if (!_isScanning || _isLoading) return;
+    print('🔍 Barcode detected! Scanning: $_isScanning, Loading: $_isLoading');
+    
+    if (!_isScanning || _isLoading) {
+      print('🔍 Ignoring scan - not ready');
+      return;
+    }
     
     final List<Barcode> barcodes = capture.barcodes;
+    print('🔍 Found ${barcodes.length} barcodes');
+    
     if (barcodes.isEmpty) return;
     
     final barcode = barcodes.first;
     final String? code = barcode.rawValue;
     
-    if (code == null || code.isEmpty) return;
+    print('🔍 Scanned code: $code');
+    
+    if (code == null || code.isEmpty) {
+      print('🔍 Code is null or empty');
+      return;
+    }
     
     setState(() {
       _isScanning = false;
@@ -121,8 +157,68 @@ class _ScannerScreenState extends State<ScannerScreen> {
     _controller.toggleTorch();
   }
 
+  void _showManualInputDialog() {
+    final TextEditingController controller = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Manual SKU Input'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Enter SKU',
+            hintText: 'e.g., 116001FMG6957-C1',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final sku = controller.text.trim();
+              if (sku.isNotEmpty) {
+                Navigator.of(context).pop();
+                _searchProduct(sku);
+              }
+            },
+            child: const Text('Search'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_permissionGranted) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          title: const Text('Camera Permission'),
+        ),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.camera_alt, size: 64, color: Colors.white),
+              SizedBox(height: 16),
+              Text(
+                'Camera permission is required to scan barcodes',
+                style: TextStyle(color: Colors.white, fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -133,6 +229,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
           IconButton(
             onPressed: _toggleFlash,
             icon: const Icon(Icons.flash_on),
+            tooltip: 'Toggle Flash',
+          ),
+          IconButton(
+            onPressed: _showManualInputDialog,
+            icon: const Icon(Icons.keyboard),
+            tooltip: 'Manual Input',
           ),
         ],
       ),
@@ -142,6 +244,36 @@ class _ScannerScreenState extends State<ScannerScreen> {
           MobileScanner(
             controller: _controller,
             onDetect: _onDetect,
+            errorBuilder: (context, error, child) {
+              return Container(
+                color: Colors.black,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error, color: Colors.red, size: 64),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Camera Error: ${error.errorCode}',
+                        style: const TextStyle(color: Colors.white, fontSize: 16),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        error.errorDetails?.message ?? 'Unknown error',
+                        style: const TextStyle(color: Colors.white70, fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Go Back'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
           
           // Overlay
@@ -186,25 +318,39 @@ class _ScannerScreenState extends State<ScannerScreen> {
           // Instructions
           if (!_isLoading)
             Positioned(
-              bottom: 100,
+              bottom: 80,
               left: 0,
               right: 0,
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 32),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'Point your camera at a barcode to scan',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 32),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'Point your camera at a barcode to scan',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
-                  textAlign: TextAlign.center,
-                ),
+                  const SizedBox(height: 16),
+                  // Test button for known SKU
+                  ElevatedButton(
+                    onPressed: () => _searchProduct('116001FMG6957-C1'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[600],
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Test with Known SKU'),
+                  ),
+                ],
               ),
             ),
         ],
