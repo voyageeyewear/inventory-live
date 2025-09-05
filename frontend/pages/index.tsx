@@ -33,7 +33,6 @@ export default function Products() {
   const [editForm, setEditForm] = useState({
     product_name: '',
     category: '',
-    price: '',
     quantity: '',
     description: '',
     image_url: ''
@@ -146,7 +145,6 @@ export default function Products() {
     setEditForm({
       product_name: product.product_name,
       category: product.category || '',
-      price: product.price || '0.00',
       quantity: product.quantity.toString(),
       description: product.description || '',
       image_url: product.image_url || ''
@@ -165,7 +163,7 @@ export default function Products() {
         sku: products.find(p => p.id.toString() === productId)?.sku,
         product_name: editForm.product_name,
         category: editForm.category,
-        price: parseFloat(editForm.price) || 0,
+        price: 1999, // Keep default price for backend compatibility
         quantity: parseInt(editForm.quantity),
         description: editForm.description,
         image_url: editForm.image_url
@@ -189,7 +187,6 @@ export default function Products() {
     setEditForm({
       product_name: '',
       category: '',
-      price: '',
       quantity: '',
       description: '',
       image_url: ''
@@ -306,7 +303,7 @@ export default function Products() {
         auditReport += `Product: ${audit.product.product_name}\n`
         auditReport += `SKU: ${audit.product.sku}\n`
         auditReport += `Current Quantity: ${audit.product.current_quantity}\n`
-        auditReport += `Price: ₹${audit.product.price}\n`
+        auditReport += `Image: ${audit.product.image_url ? 'Available' : 'No image'}\n`
         auditReport += `Category: ${audit.product.category || 'N/A'}\n\n`
         
         auditReport += `📈 SUMMARY:\n`
@@ -498,7 +495,7 @@ export default function Products() {
                         Category
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Price
+                        Image
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Quantity
@@ -558,14 +555,31 @@ export default function Products() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           {editingProduct === product.id.toString() ? (
                             <input
-                              type="number"
-                              step="0.01"
-                              value={editForm.price}
-                              onChange={(e) => handleEditInputChange('price', e.target.value)}
+                              type="url"
+                              value={editForm.image_url}
+                              onChange={(e) => handleEditInputChange('image_url', e.target.value)}
+                              placeholder="Image URL"
                               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             />
                           ) : (
-                            <span className="text-sm text-gray-900">₹{product.price}</span>
+                            <div className="flex items-center">
+                              {product.image_url ? (
+                                <img
+                                  src={product.image_url}
+                                  alt={product.product_name}
+                                  className="h-12 w-12 rounded-lg object-cover border border-gray-200"
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0yNCAzNkMzMC42Mjc0IDM2IDM2IDMwLjYyNzQgMzYgMjRDMzYgMTcuMzcyNiAzMC42Mjc0IDEyIDI0IDEyQzE3LjM3MjYgMTIgMTIgMTcuMzcyNiAxMiAyNEMxMiAzMC42Mjc0IDE3LjM3MjYgMzYgMjQgMzZaIiBzdHJva2U9IiM5Q0EzQUYiIHN0cm9rZS13aWR0aD0iMiIvPgo8cGF0aCBkPSJNMjQgMjhDMjYuMjA5MSAyOCAyOCAyNi4yMDkxIDI4IDI0QzI4IDIxLjc5MDkgMjYuMjA5MSAyMCAyNCAyMEMyMS43OTA5IDIwIDIwIDIxLjc5MDkgMjAgMjRDMjAgMjYuMjA5MSAyMS43OTA5IDI4IDI0IDI4WiIgZmlsbD0iIzlDQTNBRiIvPgo8L3N2Zz4K';
+                                    target.alt = 'No image';
+                                  }}
+                                />
+                              ) : (
+                                <div className="h-12 w-12 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                                  <Package className="h-6 w-6 text-gray-400" />
+                                </div>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
