@@ -83,6 +83,38 @@ export default function Settings() {
     }
   }
 
+  const addDevelopmentStore = async () => {
+    try {
+      const response = await axios.post('/api/stores/add-development-store')
+      if (response.data.success) {
+        toast.success(response.data.message)
+        fetchStores()
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to add Development Store')
+    }
+  }
+
+  const testSync = async (storeId: string) => {
+    try {
+      toast.loading('Testing sync functionality...', { duration: 3000 })
+      const response = await axios.post('/api/stores/test-sync', { storeId })
+      
+      if (response.data.success) {
+        const { summary, results } = response.data
+        toast.success(`✅ Sync test completed: ${summary.successful}/${summary.total_products_tested} products ready`)
+        
+        // Show detailed results in console
+        console.log('Sync Test Results:', results)
+        console.log('Summary:', summary)
+        
+        fetchStores()
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Sync test failed')
+    }
+  }
+
   return (
     <ProtectedRoute requiredPermission="manageStores">
       <Layout>
@@ -93,13 +125,22 @@ export default function Settings() {
             <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
             <p className="text-gray-600">Manage your Shopify store connections</p>
           </div>
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Add Store
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={addDevelopmentStore}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium"
+            >
+              <Store className="h-4 w-4" />
+              Add Development Store
+            </button>
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="btn-primary flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Add Store
+            </button>
+          </div>
         </div>
 
         {/* Add Store Form */}
@@ -224,9 +265,17 @@ export default function Settings() {
                       </div>
                       <button
                         onClick={() => testConnection(store._id)}
-                        className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                        className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                       >
                         Test
+                      </button>
+                      <button
+                        onClick={() => testSync(store._id)}
+                        className="text-sm text-green-600 hover:text-green-700 font-medium"
+                        disabled={!store.connected}
+                        title={store.connected ? 'Test sync functionality' : 'Connect store first'}
+                      >
+                        Sync Test
                       </button>
                       <button
                         onClick={() => handleDeleteStore(store._id)}
