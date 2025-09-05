@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  static const String baseUrl = 'https://local-inventory-management-system-5acygvdq8.vercel.app';
+  static const String baseUrl = 'https://local-inventory-management-system-kje9jaba6.vercel.app';
   
   // Get stored auth token
   Future<String?> getAuthToken() async {
