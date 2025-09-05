@@ -471,7 +471,7 @@ export default function Dashboard() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className={`flex items-center gap-2 ${getActionColor(item.action)}`}>
                           {getActionIcon(item.action)}
-                          <span className="text-sm capitalize">{item.action.replace('_', ' ')}</span>
+                          <span className="text-sm capitalize">{item.action?.replace('_', ' ') || 'Unknown'}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

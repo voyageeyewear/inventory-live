@@ -383,7 +383,7 @@ export default function SyncActivity() {
                           <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${getActionColor(log.action)}`}>
                             {getActionIcon(log.action)}
                             <span className="capitalize">
-                              {log.action.replace('sync_', '')}
+                              {log.action?.replace('sync_', '') || 'Unknown'}
                             </span>
                           </div>
                         </td>
