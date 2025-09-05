@@ -160,7 +160,8 @@ export default function Products() {
     }
 
     try {
-      const response = await axios.put(`/api/products/${productId}`, {
+      const response = await axios.post('/api/products/edit', {
+        id: parseInt(productId),
         sku: products.find(p => p.id.toString() === productId)?.sku,
         product_name: editForm.product_name,
         category: editForm.category,
@@ -227,7 +228,9 @@ export default function Products() {
     }
 
     try {
-      await axios.delete(`/api/products/${product.id}`)
+      await axios.post('/api/products/delete', {
+        id: product.id
+      })
       toast.success(`Product "${product.product_name}" deleted successfully!`)
       fetchProducts() // Refresh the product list
       
