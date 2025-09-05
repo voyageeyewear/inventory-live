@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import Layout from '../components/Layout'
 import ProtectedRoute from '../components/ProtectedRoute'
-import { Upload, Package, Eye, RefreshCw, CheckSquare, Square, History, X, Edit, Save, Trash2 } from 'lucide-react'
+import { Upload, Package, Eye, RefreshCw, CheckSquare, Square, History, X, Edit, Save, Trash2, Sync, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
@@ -248,6 +248,89 @@ export default function Products() {
       ...prev,
       [field]: value
     }))
+  }
+
+  const handleSyncProduct = async (product: Product) => {
+    const confirm = window.confirm(
+      `🔄 SYNC PRODUCT TO ALL STORES\n\n` +
+      `Product: ${product.product_name}\n` +
+      `SKU: ${product.sku}\n` +
+      `Current Quantity: ${product.quantity}\n\n` +
+      `This will sync this product to all connected Shopify stores.\n\n` +
+      `Are you sure you want to continue?`
+    )
+
+    if (!confirm) {
+      return
+    }
+
+    try {
+      const response = await axios.post('/api/products/sync', {
+        productId: product.id,
+        sku: product.sku
+      })
+
+      if (response.data.success) {
+        toast.success(`✅ ${response.data.message}`)
+        
+        // Show detailed results
+        const results = response.data.results
+        const successStores = results.filter((r: any) => r.status === 'success')
+        const errorStores = results.filter((r: any) => r.status === 'error')
+        
+        if (successStores.length > 0) {
+          console.log('Successful syncs:', successStores)
+        }
+        if (errorStores.length > 0) {
+          console.log('Failed syncs:', errorStores)
+          toast.error(`Some syncs failed. Check console for details.`)
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to sync product')
+    }
+  }
+
+  const handleAuditProduct = async (product: Product) => {
+    try {
+      const response = await axios.post('/api/products/audit', {
+        productId: product.id,
+        sku: product.sku
+      })
+
+      if (response.data.success) {
+        const audit = response.data.audit
+        
+        // Create a detailed audit report
+        let auditReport = `📊 PRODUCT AUDIT REPORT\n\n`
+        auditReport += `Product: ${audit.product.product_name}\n`
+        auditReport += `SKU: ${audit.product.sku}\n`
+        auditReport += `Current Quantity: ${audit.product.current_quantity}\n`
+        auditReport += `Price: $${audit.product.price}\n`
+        auditReport += `Category: ${audit.product.category || 'N/A'}\n\n`
+        
+        auditReport += `📈 SUMMARY:\n`
+        auditReport += `• Total Stock Changes: ${audit.summary.total_stock_changes}\n`
+        auditReport += `• Total Scans: ${audit.summary.total_scans}\n`
+        auditReport += `• Last Stock Change: ${audit.summary.last_stock_change ? new Date(audit.summary.last_stock_change).toLocaleString() : 'Never'}\n`
+        auditReport += `• Last Scan: ${audit.summary.last_scan ? new Date(audit.summary.last_scan).toLocaleString() : 'Never'}\n\n`
+        
+        if (audit.stock_history.length > 0) {
+          auditReport += `📋 RECENT STOCK HISTORY (Last ${Math.min(5, audit.stock_history.length)}):\n`
+          audit.stock_history.slice(0, 5).forEach((log: any, index: number) => {
+            auditReport += `${index + 1}. ${log.type.toUpperCase()} - ${log.quantity} units by ${log.user_name} (${new Date(log.created_at).toLocaleDateString()})\n`
+          })
+        }
+        
+        alert(auditReport)
+        
+        // Also log detailed data to console
+        console.log('Full Audit Data:', audit)
+        toast.success('✅ Audit data retrieved successfully')
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to get audit data')
+    }
   }
 
   // Filter products based on search term
@@ -507,7 +590,7 @@ export default function Products() {
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1 flex-wrap">
                             {editingProduct === product.id.toString() ? (
                               <>
                                 <button
@@ -530,6 +613,7 @@ export default function Products() {
                                 <button
                                   onClick={() => handleEditProduct(product)}
                                   className="text-blue-600 hover:text-blue-900 flex items-center gap-1"
+                                  title="Edit product details"
                                 >
                                   <Edit className="h-4 w-4" />
                                   Edit
@@ -537,9 +621,26 @@ export default function Products() {
                                 <button
                                   onClick={() => handleDeleteProduct(product)}
                                   className="text-red-600 hover:text-red-900 flex items-center gap-1"
+                                  title="Delete product"
                                 >
                                   <Trash2 className="h-4 w-4" />
                                   Delete
+                                </button>
+                                <button
+                                  onClick={() => handleSyncProduct(product)}
+                                  className="text-green-600 hover:text-green-900 flex items-center gap-1"
+                                  title="Sync product to all stores"
+                                >
+                                  <Sync className="h-4 w-4" />
+                                  Sync
+                                </button>
+                                <button
+                                  onClick={() => handleAuditProduct(product)}
+                                  className="text-purple-600 hover:text-purple-900 flex items-center gap-1"
+                                  title="View product audit history"
+                                >
+                                  <FileText className="h-4 w-4" />
+                                  Audit
                                 </button>
                               </>
                             )}
