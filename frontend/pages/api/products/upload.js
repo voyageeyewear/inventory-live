@@ -109,14 +109,34 @@ export default async function handler(req, res) {
     }
 
     // Parse CSV file
-    const products = await parseCSV(file.filepath)
+    const rawProducts = await parseCSV(file.filepath)
     
     // Clean up uploaded file
     fs.unlinkSync(file.filepath)
 
-    if (products.length === 0) {
+    if (rawProducts.length === 0) {
       return res.status(400).json({ message: 'No valid products found in CSV file' })
     }
+
+    // Consolidate duplicate SKUs by combining quantities
+    const productMap = new Map()
+    
+    for (const product of rawProducts) {
+      if (productMap.has(product.sku)) {
+        // SKU already exists, add quantities together
+        const existing = productMap.get(product.sku)
+        existing.quantity += product.quantity
+        console.log(`Duplicate SKU ${product.sku}: Combined quantity ${existing.quantity}`)
+      } else {
+        // New SKU, add to map
+        productMap.set(product.sku, { ...product })
+      }
+    }
+    
+    // Convert map back to array
+    const products = Array.from(productMap.values())
+    
+    console.log(`Processed ${rawProducts.length} raw products into ${products.length} unique products`)
 
     // Insert products into database
     let successCount = 0
