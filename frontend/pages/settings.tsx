@@ -4,6 +4,7 @@ import ProtectedRoute from '../components/ProtectedRoute'
 import { Plus, Store, Trash2, ExternalLink, CheckCircle, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
+import { useAuth } from '../contexts/AuthContext'
 
 interface ShopifyStore {
   _id: string
@@ -23,16 +24,26 @@ export default function Settings() {
     access_token: ''
   })
 
+  const { user, isFullyAuthenticated } = useAuth()
+
   useEffect(() => {
-    fetchStores()
-  }, [])
+    if (isFullyAuthenticated) {
+      console.log('Settings: Making API call - fully authenticated')
+      fetchStores()
+    }
+  }, [isFullyAuthenticated])
 
   const fetchStores = async () => {
     try {
+      setLoading(true)
+      console.log('Fetching stores...')
       const response = await axios.get('/api/stores')
+      console.log('Stores response:', response.data)
       setStores(response.data)
-    } catch (error) {
-      toast.error('Failed to fetch stores')
+    } catch (error: any) {
+      console.error('Fetch stores error:', error)
+      console.error('Error response:', error.response?.data)
+      toast.error(error.response?.data?.message || 'Failed to fetch stores')
     } finally {
       setLoading(false)
     }
