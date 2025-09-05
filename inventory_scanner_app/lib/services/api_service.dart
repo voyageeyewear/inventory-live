@@ -56,65 +56,149 @@ class ApiService {
       
       final response = await http.post(
         Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
         body: json.encode({
           'username': username,
           'password': password,
         }),
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Request timeout - server not responding');
+        },
       );
       
       print('📡 Login Response Status: ${response.statusCode}');
       print('📄 Login Response Body: ${response.body}');
+      print('📄 Response Headers: ${response.headers}');
       
       if (response.statusCode == 200) {
+        // Check if response body is empty
+        if (response.body.isEmpty) {
+          print('❌ Empty response body');
+          return {
+            'success': false,
+            'message': 'Server returned empty response',
+          };
+        }
+
         try {
+          // Try to decode JSON
           final data = json.decode(response.body);
           print('🔍 Parsed JSON data: $data');
           print('🔍 Data type: ${data.runtimeType}');
-          print('🔍 Success field: ${data['success']}');
-          print('🔍 Token field exists: ${data.containsKey('token')}');
-          print('🔍 User field exists: ${data.containsKey('user')}');
           
-          if (data != null && data is Map<String, dynamic> && data['success'] == true) {
+          // Ensure data is a Map
+          if (data is! Map<String, dynamic>) {
+            print('❌ Response is not a JSON object');
+            return {
+              'success': false,
+              'message': 'Invalid response format: not a JSON object',
+            };
+          }
+
+          // Check success field
+          final success = data['success'];
+          print('🔍 Success field: $success (type: ${success.runtimeType})');
+          
+          if (success == true) {
+            // Extract token and user
             final token = data['token'];
             final user = data['user'];
             
-            print('🔍 Token: ${token != null ? 'Found' : 'Null'}');
-            print('🔍 User: ${user != null ? 'Found' : 'Null'}');
+            print('🔍 Token: ${token != null ? 'Found (${token.toString().length} chars)' : 'Null'}');
+            print('🔍 User: ${user != null ? 'Found (${user.runtimeType})' : 'Null'}');
             
-            if (token != null && user != null) {
-              await setAuthToken(token);
-              await setUserData(user);
-              print('✅ Login successful, token and user data saved');
+            if (token != null && token is String && token.isNotEmpty) {
+              if (user != null && user is Map<String, dynamic>) {
+                try {
+                  await setAuthToken(token);
+                  await setUserData(user);
+                  print('✅ Login successful, token and user data saved');
+                  
+                  return {
+                    'success': true,
+                    'message': data['message'] ?? 'Login successful',
+                    'token': token,
+                    'user': user,
+                  };
+                } catch (storageError) {
+                  print('🚨 Storage Error: $storageError');
+                  return {
+                    'success': false,
+                    'message': 'Failed to save login data: $storageError',
+                  };
+                }
+              } else {
+                print('❌ User data is invalid: $user');
+                return {
+                  'success': false,
+                  'message': 'Invalid user data in response',
+                };
+              }
             } else {
-              print('❌ Token or user data is null');
+              print('❌ Token is invalid: $token');
               return {
                 'success': false,
-                'message': 'Invalid response: missing token or user data',
+                'message': 'Invalid token in response',
               };
             }
+          } else {
+            final message = data['message'] ?? 'Login failed';
+            print('❌ Login failed: $message');
+            return {
+              'success': false,
+              'message': message,
+            };
           }
-          return data;
         } catch (jsonError) {
           print('🚨 JSON Parse Error: $jsonError');
+          print('🚨 Raw response: ${response.body}');
           return {
             'success': false,
-            'message': 'Failed to parse response: $jsonError',
+            'message': 'Failed to parse server response: $jsonError',
           };
         }
       } else {
-        print('❌ Login failed: ${response.statusCode}');
+        print('❌ HTTP Error: ${response.statusCode}');
         print('📄 Error Response Body: ${response.body}');
-        return {
-          'success': false,
-          'message': 'Login failed: ${response.statusCode}',
-        };
+        
+        // Try to parse error response
+        try {
+          final errorData = json.decode(response.body);
+          final errorMessage = errorData['message'] ?? 'Login failed';
+          return {
+            'success': false,
+            'message': errorMessage,
+          };
+        } catch (e) {
+          return {
+            'success': false,
+            'message': 'Login failed with status ${response.statusCode}',
+          };
+        }
       }
     } catch (e) {
       print('🚨 Login Exception: $e');
+      print('🚨 Exception type: ${e.runtimeType}');
+      
+      String errorMessage = 'Network error occurred';
+      if (e.toString().contains('timeout')) {
+        errorMessage = 'Request timeout - check your internet connection';
+      } else if (e.toString().contains('SocketException')) {
+        errorMessage = 'Cannot connect to server - check network and server status';
+      } else if (e.toString().contains('HandshakeException')) {
+        errorMessage = 'SSL/TLS connection failed';
+      } else {
+        errorMessage = 'Network error: ${e.toString()}';
+      }
+      
       return {
         'success': false,
-        'message': 'Network error: $e',
+        'message': errorMessage,
       };
     }
   }
