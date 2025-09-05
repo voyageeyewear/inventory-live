@@ -28,7 +28,7 @@ export default function Products() {
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
   const [syncing, setSyncing] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [productsPerPage] = useState(10)
+  const [productsPerPage] = useState(100)
   const [editingProduct, setEditingProduct] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({
     product_name: '',
@@ -306,7 +306,7 @@ export default function Products() {
         auditReport += `Product: ${audit.product.product_name}\n`
         auditReport += `SKU: ${audit.product.sku}\n`
         auditReport += `Current Quantity: ${audit.product.current_quantity}\n`
-        auditReport += `Price: $${audit.product.price}\n`
+        auditReport += `Price: ₹${audit.product.price}\n`
         auditReport += `Category: ${audit.product.category || 'N/A'}\n\n`
         
         auditReport += `📈 SUMMARY:\n`
@@ -565,7 +565,7 @@ export default function Products() {
                               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             />
                           ) : (
-                            <span className="text-sm text-gray-900">${product.price}</span>
+                            <span className="text-sm text-gray-900">₹{product.price}</span>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -690,19 +690,76 @@ export default function Products() {
                         >
                           Previous
                         </button>
-                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((number) => (
-                          <button
-                            key={number}
-                            onClick={() => paginate(number)}
-                            className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                              currentPage === number
-                                ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
-                                : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
-                            }`}
-                          >
-                            {number}
-                          </button>
-                        ))}
+                        {(() => {
+                          const pages = []
+                          const maxVisiblePages = 7
+                          let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2))
+                          let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1)
+                          
+                          // Adjust start page if we're near the end
+                          if (endPage - startPage + 1 < maxVisiblePages) {
+                            startPage = Math.max(1, endPage - maxVisiblePages + 1)
+                          }
+                          
+                          // First page + ellipsis
+                          if (startPage > 1) {
+                            pages.push(
+                              <button
+                                key={1}
+                                onClick={() => paginate(1)}
+                                className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                              >
+                                1
+                              </button>
+                            )
+                            if (startPage > 2) {
+                              pages.push(
+                                <span key="start-ellipsis" className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                                  ...
+                                </span>
+                              )
+                            }
+                          }
+                          
+                          // Visible pages
+                          for (let i = startPage; i <= endPage; i++) {
+                            pages.push(
+                              <button
+                                key={i}
+                                onClick={() => paginate(i)}
+                                className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                                  currentPage === i
+                                    ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                                    : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                                }`}
+                              >
+                                {i}
+                              </button>
+                            )
+                          }
+                          
+                          // Last page + ellipsis
+                          if (endPage < totalPages) {
+                            if (endPage < totalPages - 1) {
+                              pages.push(
+                                <span key="end-ellipsis" className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                                  ...
+                                </span>
+                              )
+                            }
+                            pages.push(
+                              <button
+                                key={totalPages}
+                                onClick={() => paginate(totalPages)}
+                                className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                              >
+                                {totalPages}
+                              </button>
+                            )
+                          }
+                          
+                          return pages
+                        })()}
                         <button
                           onClick={() => paginate(currentPage + 1)}
                           disabled={currentPage === totalPages}

@@ -49,8 +49,8 @@ const parseCSV = (filePath) => {
           category: row['Type'] || row['type'] || row['Category'] || row['category'] || 'General',
           sku: row['Variant SKU'] || row['variant_sku'] || row['SKU'] || row['sku'] || '',
           quantity: parseInt(row['Variant Inventory Qty'] || row['variant_inventory_qty'] || row['Quantity'] || row['quantity'] || '0'),
-          price: parseFloat(row['Price'] || row['price'] || '0'),
-          description: row['Description'] || row['description'] || '',
+          price: parseFloat(row['Price'] || row['price'] || row['Variant Price'] || row['variant_price'] || '1999'), // Default price 1999 INR for eyeglasses
+          description: row['Description'] || row['description'] || row['Title'] || row['title'] || '',
           image_url: row['Image Src'] || row['image_src'] || row['Image URL'] || row['image_url'] || ''
         }
         
