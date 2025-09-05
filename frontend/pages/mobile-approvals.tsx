@@ -35,22 +35,31 @@ interface MobileTransaction {
 }
 
 export default function MobileApprovals() {
-  const { user } = useAuth()
+  const { user, isFullyAuthenticated } = useAuth()
   const [transactions, setTransactions] = useState<MobileTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<number | null>(null)
 
   useEffect(() => {
-    fetchPendingTransactions()
-  }, [])
+    if (isFullyAuthenticated) {
+      console.log('Mobile Approvals: Making API call - fully authenticated')
+      fetchPendingTransactions()
+    } else {
+      console.log('Mobile Approvals: Waiting for authentication...')
+    }
+  }, [isFullyAuthenticated])
 
   const fetchPendingTransactions = async () => {
     try {
       setLoading(true)
+      console.log('🔄 Fetching pending mobile transactions...')
       const response = await axios.get('/api/mobile-transactions')
-      setTransactions(response.data.data)
+      console.log('📱 Mobile transactions response:', response.data)
+      console.log('📱 Number of transactions:', response.data.data?.length || 0)
+      setTransactions(response.data.data || [])
     } catch (error: any) {
-      console.error('Fetch transactions error:', error)
+      console.error('❌ Fetch transactions error:', error)
+      console.error('❌ Error response:', error.response?.data)
       toast.error(error.response?.data?.message || 'Failed to fetch pending transactions')
     } finally {
       setLoading(false)
@@ -134,11 +143,24 @@ export default function MobileApprovals() {
                   <p className="text-gray-600">Review and approve mobile app stock transactions</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <Clock className="h-4 w-4 text-yellow-600" />
-                <span className="text-sm font-medium text-yellow-800">
-                  {transactions.length} Pending
-                </span>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <Clock className="h-4 w-4 text-yellow-600" />
+                  <span className="text-sm font-medium text-yellow-800">
+                    {transactions.length} Pending
+                  </span>
+                </div>
+                <button
+                  onClick={fetchPendingTransactions}
+                  disabled={loading}
+                  className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-50"
+                  title="Refresh transactions"
+                >
+                  <svg className={`h-4 w-4 text-blue-600 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span className="text-sm font-medium text-blue-800">Refresh</span>
+                </button>
               </div>
             </div>
           </div>
