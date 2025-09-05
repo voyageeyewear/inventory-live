@@ -39,7 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (result['success'] == true) {
-        widget.onLoginSuccess(result['data']['user']);
+        widget.onLoginSuccess(result['user']);
       } else {
         _showErrorDialog(result['message'] ?? 'Login failed');
       }

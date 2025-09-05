@@ -67,15 +67,44 @@ class ApiService {
       print('📄 Login Response Body: ${response.body}');
       
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success'] == true) {
-          await setAuthToken(data['token']);
-          await setUserData(data['user']);
-          print('✅ Login successful, token saved');
+        try {
+          final data = json.decode(response.body);
+          print('🔍 Parsed JSON data: $data');
+          print('🔍 Data type: ${data.runtimeType}');
+          print('🔍 Success field: ${data['success']}');
+          print('🔍 Token field exists: ${data.containsKey('token')}');
+          print('🔍 User field exists: ${data.containsKey('user')}');
+          
+          if (data != null && data is Map<String, dynamic> && data['success'] == true) {
+            final token = data['token'];
+            final user = data['user'];
+            
+            print('🔍 Token: ${token != null ? 'Found' : 'Null'}');
+            print('🔍 User: ${user != null ? 'Found' : 'Null'}');
+            
+            if (token != null && user != null) {
+              await setAuthToken(token);
+              await setUserData(user);
+              print('✅ Login successful, token and user data saved');
+            } else {
+              print('❌ Token or user data is null');
+              return {
+                'success': false,
+                'message': 'Invalid response: missing token or user data',
+              };
+            }
+          }
+          return data;
+        } catch (jsonError) {
+          print('🚨 JSON Parse Error: $jsonError');
+          return {
+            'success': false,
+            'message': 'Failed to parse response: $jsonError',
+          };
         }
-        return data;
       } else {
         print('❌ Login failed: ${response.statusCode}');
+        print('📄 Error Response Body: ${response.body}');
         return {
           'success': false,
           'message': 'Login failed: ${response.statusCode}',
