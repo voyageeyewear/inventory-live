@@ -137,6 +137,9 @@ class ApiService {
             orElse: () => products.first,
           );
           
+          // Log the scan for history tracking
+          _logScan(sku);
+          
           return {
             'success': true,
             'product': exactMatch,
@@ -159,6 +162,34 @@ class ApiService {
         'success': false,
         'message': 'Search error: ${e.toString()}',
       };
+    }
+  }
+
+  // Log scan for history tracking (fire and forget)
+  Future<void> _logScan(String sku) async {
+    try {
+      final token = await getAuthToken();
+      if (token == null) return;
+      
+      print('📝 Logging scan for SKU: $sku');
+      
+      await http.post(
+        Uri.parse('$baseUrl/api/scan-logs'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({
+          'sku': sku,
+          'session_id': 'mobile-session',
+          'quantity': 1,
+        }),
+      ).timeout(const Duration(seconds: 5));
+      
+      print('✅ Scan logged successfully');
+    } catch (e) {
+      print('⚠️ Failed to log scan: $e');
+      // Don't throw error as this is not critical
     }
   }
   
