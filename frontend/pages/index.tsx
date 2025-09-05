@@ -10,43 +10,51 @@ interface Product {
   id: number
   sku: string
   product_name: string
+  category: string
+  price: string
   quantity: number
+  description: string
   image_url?: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
 }
 
 export default function Products() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
   const [syncing, setSyncing] = useState(false)
-  const [syncingProduct, setSyncingProduct] = useState<string | null>(null)
-  const [showAuditModal, setShowAuditModal] = useState(false)
-  const [auditProduct, setAuditProduct] = useState<string | null>(null)
-  const [auditLogs, setAuditLogs] = useState<any[]>([])
-  const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(20)
+  const [productsPerPage] = useState(10)
   const [editingProduct, setEditingProduct] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({
     product_name: '',
+    category: '',
+    price: '',
     quantity: '',
+    description: '',
     image_url: ''
   })
-  const { hasPermission, user, token, isFullyAuthenticated } = useAuth()
+
+  const { user, isFullyAuthenticated } = useAuth()
 
   useEffect(() => {
     if (isFullyAuthenticated) {
-      console.log('Products: Making API call - fully authenticated');
+      console.log('Products: Making API call - fully authenticated')
       fetchProducts()
     }
   }, [isFullyAuthenticated])
 
   const fetchProducts = async () => {
     try {
+      setLoading(true)
       const response = await axios.get('/api/products')
-      setProducts(response.data)
-    } catch (error) {
+      setProducts(response.data || [])
+    } catch (error: any) {
+      console.error('Error fetching products:', error)
       toast.error('Failed to fetch products')
     } finally {
       setLoading(false)
@@ -58,28 +66,32 @@ export default function Products() {
     if (!file) return
 
     if (!file.name.endsWith('.csv')) {
-      toast.error('Please upload a CSV file')
+      toast.error('Please select a CSV file')
       return
     }
 
-    setUploading(true)
     const formData = new FormData()
-    formData.append('csv', file)
+    formData.append('file', file)
 
     try {
+      setUploading(true)
       const response = await axios.post('/api/products/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       })
+      
       toast.success(`Successfully uploaded ${response.data.count} products`)
       fetchProducts()
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Upload failed')
-    } finally {
-      setUploading(false)
+      
       // Reset file input
       event.target.value = ''
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to upload CSV')
+      // Reset file input
+      event.target.value = ''
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -117,63 +129,15 @@ export default function Products() {
       const response = await axios.post('/api/sync/multi', { skus: selectedSkus })
       toast.success(`Successfully synced ${selectedProducts.size} products`)
       setSelectedProducts(new Set())
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Sync failed')
-    } finally {
-      setSyncing(false)
-    }
-  }
-
-  const handleSyncSingle = async (sku: string) => {
-    setSyncingProduct(sku)
-    try {
-      const response = await axios.post('/api/sync/test-one', { sku })
-      if (response.data.success) {
-        toast.success(`Successfully synced ${sku}`)
-      } else {
-        toast.error(`Failed to sync ${sku}`)
+      
+      // Refresh sync status
+      if ((window as any).refreshSyncStatus) {
+        (window as any).refreshSyncStatus()
       }
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Sync failed')
+      toast.error(error.response?.data?.message || 'Failed to sync products')
     } finally {
-      setSyncingProduct(null)
-    }
-  }
-
-  const handleViewAudit = async (sku: string) => {
-    setAuditProduct(sku)
-    setShowAuditModal(true)
-    
-    try {
-      const response = await axios.get(`/api/audit/product/${sku}`)
-      setAuditLogs(response.data.data.logs || [])
-    } catch (error) {
-      toast.error('Failed to fetch audit logs')
-      setAuditLogs([])
-    }
-  }
-
-  // Filter and paginate products
-  const filteredProducts = products.filter(product =>
-    product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.product_name.toLowerCase().includes(searchTerm.toLowerCase())
-  )
-
-  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const paginatedProducts = filteredProducts.slice(startIndex, startIndex + itemsPerPage)
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString()
-  }
-
-  const getActionColor = (action: string) => {
-    switch (action) {
-      case 'sync_success': return 'text-green-600'
-      case 'sync_failed': return 'text-red-600'
-      case 'stock_in': return 'text-blue-600'
-      case 'stock_out': return 'text-orange-600'
-      default: return 'text-gray-600'
+      setSyncing(false)
     }
   }
 
@@ -181,7 +145,10 @@ export default function Products() {
     setEditingProduct(product.id.toString())
     setEditForm({
       product_name: product.product_name,
+      category: product.category || '',
+      price: product.price || '0.00',
       quantity: product.quantity.toString(),
+      description: product.description || '',
       image_url: product.image_url || ''
     })
   }
@@ -192,15 +159,14 @@ export default function Products() {
       return
     }
 
-    if (isNaN(Number(editForm.quantity)) || Number(editForm.quantity) < 0) {
-      toast.error('Quantity must be a valid number')
-      return
-    }
-
     try {
       const response = await axios.put(`/api/products/${productId}`, {
+        sku: products.find(p => p.id.toString() === productId)?.sku,
         product_name: editForm.product_name,
+        category: editForm.category,
+        price: parseFloat(editForm.price) || 0,
         quantity: parseInt(editForm.quantity),
+        description: editForm.description,
         image_url: editForm.image_url
       })
 
@@ -221,7 +187,10 @@ export default function Products() {
     setEditingProduct(null)
     setEditForm({
       product_name: '',
+      category: '',
+      price: '',
       quantity: '',
+      description: '',
       image_url: ''
     })
   }
@@ -278,6 +247,21 @@ export default function Products() {
     }))
   }
 
+  // Filter products based on search term
+  const filteredProducts = products.filter(product =>
+    product.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (product.category && product.category.toLowerCase().includes(searchTerm.toLowerCase()))
+  )
+
+  // Pagination
+  const indexOfLastProduct = currentPage * productsPerPage
+  const indexOfFirstProduct = indexOfLastProduct - productsPerPage
+  const paginatedProducts = filteredProducts.slice(indexOfFirstProduct, indexOfLastProduct)
+  const totalPages = Math.ceil(filteredProducts.length / productsPerPage)
+
+  const paginate = (pageNumber: number) => setCurrentPage(pageNumber)
+
   return (
     <ProtectedRoute requiredPermission="viewProducts">
       <Layout>
@@ -288,10 +272,18 @@ export default function Products() {
             <h1 className="text-2xl font-bold text-gray-900">Products</h1>
             <p className="text-gray-600">Upload and manage your product inventory</p>
           </div>
+          <button
+            onClick={fetchProducts}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
         </div>
 
         {/* Upload Section */}
-        <div className="card">
+        <div className="bg-white rounded-lg shadow-sm border p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Upload Master CSV</h2>
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
             <div className="text-center">
@@ -304,80 +296,93 @@ export default function Products() {
                   <span className="mt-1 block text-sm text-gray-500">
                     Supported formats: Product Name/Title, SKU/Variant SKU, Quantity/Variant Inventory Qty, Image/Image Src
                   </span>
-                  <input
-                    id="csv-upload"
-                    name="csv-upload"
-                    type="file"
-                    accept=".csv"
-                    className="sr-only"
-                    onChange={handleFileUpload}
-                    disabled={uploading}
-                  />
-                  <span className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700">
-                    {uploading ? 'Uploading...' : 'Choose File'}
-                  </span>
                 </label>
+                <input
+                  id="csv-upload"
+                  name="csv-upload"
+                  type="file"
+                  accept=".csv"
+                  className="sr-only"
+                  onChange={handleFileUpload}
+                  disabled={uploading}
+                />
+                <div className="mt-4">
+                  <button
+                    onClick={() => document.getElementById('csv-upload')?.click()}
+                    disabled={uploading}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {uploading ? (
+                      <>
+                        <RefreshCw className="animate-spin -ml-1 mr-2 h-4 w-4" />
+                        Uploading...
+                      </>
+                    ) : (
+                      'Choose File'
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Products Table */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Product Inventory</h2>
-            <div className="flex items-center gap-4">
-              {/* Search */}
+        {/* Search and Actions */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+            <div className="flex-1 max-w-md">
               <input
                 type="text"
                 placeholder="Search products..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <Package className="h-4 w-4" />
+            </div>
+            <div className="flex gap-2">
+              {selectedProducts.size > 0 && (
+                <button
+                  onClick={handleSyncSelected}
+                  disabled={syncing}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  {syncing ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Sync Selected ({selectedProducts.size})
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Products Table */}
+        <div className="bg-white rounded-lg shadow-sm border">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium text-gray-900">
+                Product Inventory
+              </h3>
+              <span className="text-sm text-gray-500">
                 {filteredProducts.length} of {products.length} products
-              </div>
+              </span>
             </div>
           </div>
 
-          {/* Bulk Actions */}
-          {selectedProducts.size > 0 && (
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-blue-800">
-                  {selectedProducts.size} product{selectedProducts.size > 1 ? 's' : ''} selected
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleSyncSelected}
-                    disabled={syncing}
-                    className="btn-primary text-sm flex items-center gap-2"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                    {syncing ? 'Syncing...' : 'Sync Selected'}
-                  </button>
-                  <button
-                    onClick={() => setSelectedProducts(new Set())}
-                    className="btn-secondary text-sm"
-                  >
-                    Clear Selection
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {loading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
-              <p className="mt-2 text-gray-500">Loading products...</p>
+            <div className="flex items-center justify-center py-12">
+              <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
+              <span className="ml-2 text-gray-600">Loading products...</span>
             </div>
-          ) : products.length === 0 ? (
-            <div className="text-center py-8">
+          ) : filteredProducts.length === 0 ? (
+            <div className="text-center py-12">
               <Package className="mx-auto h-12 w-12 text-gray-400" />
-              <p className="mt-2 text-gray-500">No products found. Upload a CSV to get started.</p>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No products found</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {searchTerm ? 'Try adjusting your search terms.' : 'Get started by uploading a CSV file.'}
+              </p>
             </div>
           ) : (
             <>
@@ -388,14 +393,13 @@ export default function Products() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         <button
                           onClick={handleSelectAll}
-                          className="flex items-center gap-2 hover:text-gray-700"
+                          className="text-gray-400 hover:text-gray-600"
                         >
                           {selectedProducts.size === filteredProducts.length ? (
                             <CheckSquare className="h-4 w-4" />
                           ) : (
                             <Square className="h-4 w-4" />
                           )}
-                          Select
                         </button>
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -405,10 +409,13 @@ export default function Products() {
                         SKU
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Quantity
+                        Category
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Image
+                        Price
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Quantity
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
@@ -439,13 +446,41 @@ export default function Products() {
                               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             />
                           ) : (
-                            <div className="text-sm font-medium text-gray-900 max-w-xs truncate">
-                              {product.product_name}
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{product.product_name}</div>
+                              {product.description && (
+                                <div className="text-sm text-gray-500 truncate max-w-48">{product.description}</div>
+                              )}
                             </div>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 font-mono">{product.sku}</div>
+                          <span className="text-sm text-gray-900">{product.sku}</span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {editingProduct === product.id.toString() ? (
+                            <input
+                              type="text"
+                              value={editForm.category}
+                              onChange={(e) => handleEditInputChange('category', e.target.value)}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          ) : (
+                            <span className="text-sm text-gray-900">{product.category || '-'}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {editingProduct === product.id.toString() ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editForm.price}
+                              onChange={(e) => handleEditInputChange('price', e.target.value)}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          ) : (
+                            <span className="text-sm text-gray-900">${product.price}</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {editingProduct === product.id.toString() ? (
@@ -457,38 +492,15 @@ export default function Products() {
                               className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             />
                           ) : (
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              product.quantity > 10 
-                                ? 'bg-green-100 text-green-800' 
-                                : product.quantity > 0
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              product.quantity === 0 
+                                ? 'bg-red-100 text-red-800' 
+                                : product.quantity < 10 
                                 ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-red-100 text-red-800'
+                                : 'bg-green-100 text-green-800'
                             }`}>
                               {product.quantity}
                             </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {editingProduct === product.id.toString() ? (
-                            <input
-                              type="url"
-                              value={editForm.image_url}
-                              onChange={(e) => handleEditInputChange('image_url', e.target.value)}
-                              placeholder="Image URL"
-                              className="w-32 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            />
-                          ) : (
-                            product.image_url ? (
-                              <img 
-                                src={product.image_url} 
-                                alt={product.product_name}
-                                className="h-10 w-10 rounded-lg object-cover"
-                              />
-                            ) : (
-                              <div className="h-10 w-10 bg-gray-200 rounded-lg flex items-center justify-center">
-                                <Eye className="h-4 w-4 text-gray-400" />
-                              </div>
-                            )
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -514,36 +526,18 @@ export default function Products() {
                               <>
                                 <button
                                   onClick={() => handleEditProduct(product)}
-                                  className="text-indigo-600 hover:text-indigo-900 flex items-center gap-1"
+                                  className="text-blue-600 hover:text-blue-900 flex items-center gap-1"
                                 >
                                   <Edit className="h-4 w-4" />
                                   Edit
                                 </button>
                                 <button
-                                  onClick={() => handleSyncSingle(product.sku)}
-                                  disabled={syncingProduct === product.sku}
-                                  className="text-blue-600 hover:text-blue-900 flex items-center gap-1"
+                                  onClick={() => handleDeleteProduct(product)}
+                                  className="text-red-600 hover:text-red-900 flex items-center gap-1"
                                 >
-                                  <RefreshCw className={`h-4 w-4 ${syncingProduct === product.sku ? 'animate-spin' : ''}`} />
-                                  Sync
+                                  <Trash2 className="h-4 w-4" />
+                                  Delete
                                 </button>
-                                <button
-                                  onClick={() => handleViewAudit(product.sku)}
-                                  className="text-gray-600 hover:text-gray-900 flex items-center gap-1"
-                                >
-                                  <History className="h-4 w-4" />
-                                  Audit
-                                </button>
-                                {hasPermission('deleteProducts') && (
-                                  <button
-                                    onClick={() => handleDeleteProduct(product)}
-                                    className="text-red-600 hover:text-red-900 flex items-center gap-1"
-                                    title="Delete product (requires confirmation)"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                    Delete
-                                  </button>
-                                )}
                               </>
                             )}
                           </div>
@@ -556,108 +550,72 @@ export default function Products() {
 
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4 px-6 py-3 bg-gray-50 border-t">
-                  <div className="text-sm text-gray-700">
-                    Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredProducts.length)} of {filteredProducts.length} products
-                  </div>
-                  <div className="flex gap-2">
+                <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+                  <div className="flex-1 flex justify-between sm:hidden">
                     <button
-                      onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                      onClick={() => paginate(currentPage - 1)}
                       disabled={currentPage === 1}
-                      className="px-3 py-1 text-sm border border-gray-300 rounded disabled:opacity-50"
+                      className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
                     >
                       Previous
                     </button>
-                    <span className="px-3 py-1 text-sm">
-                      Page {currentPage} of {totalPages}
-                    </span>
                     <button
-                      onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                      onClick={() => paginate(currentPage + 1)}
                       disabled={currentPage === totalPages}
-                      className="px-3 py-1 text-sm border border-gray-300 rounded disabled:opacity-50"
+                      className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
                     >
                       Next
                     </button>
+                  </div>
+                  <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm text-gray-700">
+                        Showing <span className="font-medium">{indexOfFirstProduct + 1}</span> to{' '}
+                        <span className="font-medium">
+                          {Math.min(indexOfLastProduct, filteredProducts.length)}
+                        </span>{' '}
+                        of <span className="font-medium">{filteredProducts.length}</span> results
+                      </p>
+                    </div>
+                    <div>
+                      <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
+                        <button
+                          onClick={() => paginate(currentPage - 1)}
+                          disabled={currentPage === 1}
+                          className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          Previous
+                        </button>
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((number) => (
+                          <button
+                            key={number}
+                            onClick={() => paginate(number)}
+                            className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                              currentPage === number
+                                ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                                : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                            }`}
+                          >
+                            {number}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => paginate(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                          className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          Next
+                        </button>
+                      </nav>
+                    </div>
                   </div>
                 </div>
               )}
             </>
           )}
         </div>
-
-        {/* Audit Modal */}
-        {showAuditModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden">
-              <div className="flex items-center justify-between p-6 border-b">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Audit History - {auditProduct}
-                </h3>
-                <button
-                  onClick={() => setShowAuditModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X className="h-6 w-6" />
-                </button>
-              </div>
-              <div className="p-6 overflow-y-auto max-h-96">
-                {auditLogs.length > 0 ? (
-                  <div className="space-y-4">
-                    {auditLogs.map((log, index) => (
-                      <div key={index} className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className={`flex items-center gap-2 ${getActionColor(log.action)}`}>
-                            <span className="font-medium capitalize">
-                              {log.action.replace('_', ' ')}
-                            </span>
-                            {log.type === 'sync' && log.store_name && (
-                              <span className="text-sm text-gray-500">
-                                → {log.store_name}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-sm text-gray-500">
-                            {formatDate(log.createdAt)}
-                          </span>
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          {log.type === 'sync' ? (
-                            <div>
-                              <p>Quantity: {log.new_quantity}</p>
-                              {log.error_message && (
-                                <p className="text-red-600 mt-1">Error: {log.error_message}</p>
-                              )}
-                              {log.sync_duration_ms && (
-                                <p className="text-gray-500 mt-1">Duration: {log.sync_duration_ms}ms</p>
-                              )}
-                            </div>
-                          ) : (
-                            <div>
-                              <p>
-                                {log.old_quantity} → {log.new_quantity} 
-                                <span className={`ml-2 ${log.quantity_change > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                  ({log.quantity_change > 0 ? '+' : ''}{log.quantity_change})
-                                </span>
-                              </p>
-                              {log.reason && <p className="text-gray-500 mt-1">Reason: {log.reason}</p>}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    No audit history found for this product.
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </Layout>
     </ProtectedRoute>
   )
 }
-

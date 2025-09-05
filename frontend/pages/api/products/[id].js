@@ -28,12 +28,18 @@ export default async function handler(req, res) {
   const { method } = req
   const { id } = req.query
 
-  console.log(`Products [id] API called: method=${method}, id=${id}`)
+  // Add CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+
+  if (method === 'OPTIONS') {
+    return res.status(200).end()
+  }
 
   try {
     // Authenticate user for PUT and DELETE operations
     if (method === 'PUT' || method === 'DELETE') {
-      console.log('Authenticating user for', method, 'operation')
       await authenticateToken(req)
     }
     
