@@ -19,7 +19,9 @@ import {
   LogOut,
   User as UserIcon,
   Scan,
-  List
+  List,
+  Clock,
+  Shield
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
@@ -55,11 +57,40 @@ export default function Layout({ children }: LayoutProps) {
   const [showStoreSync, setShowStoreSync] = useState(false)
   const [syncingStore, setSyncingStore] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [currentTime, setCurrentTime] = useState(new Date())
   const router = useRouter()
   const { user, logout, hasPermission, token, isFullyAuthenticated } = useAuth()
 
   // Filter navigation based on user permissions
   const navigation = allNavigation.filter(item => hasPermission(item.permission))
+
+  // Update time every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [])
+
+  // Format time for display
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    })
+  }
+
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+  }
 
   // Fetch sync status
   const fetchSyncStatus = async () => {
@@ -294,138 +325,41 @@ export default function Layout({ children }: LayoutProps) {
               </h2>
             </div>
             <div className="flex items-center gap-x-4 lg:gap-x-6">
-                          {/* Sync Status Indicator - Only show if user has sync permissions */}
-            {hasPermission('manageStores') && syncStatus.count > 0 ? (
-                <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
-                  <AlertCircle className="h-4 w-4 text-orange-500" />
-                  <button
-                    onClick={() => setShowProductDetails(true)}
-                    className="text-sm font-medium text-orange-700 hover:text-orange-800 underline"
-                    title="Click to see product details"
-                  >
-                    {syncStatus.count} product{syncStatus.count !== 1 ? 's' : ''} need syncing
-                  </button>
-                  <button
-                    onClick={handleMarkAllSynced}
-                    disabled={loading}
-                    className="ml-2 text-xs bg-orange-100 hover:bg-orange-200 text-orange-700 px-2 py-1 rounded transition-colors"
-                    title="Mark all products as synced (clears indicator)"
-                  >
-                    {loading ? 'Marking...' : 'Mark All'}
-                  </button>
-                </div>
-              ) : hasPermission('manageStores') ? (
-                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-sm font-medium text-green-700">
-                    All products synced
-                  </span>
-                </div>
-              ) : null}
-
-              {/* Sync All Stores Button - Only show if user has sync permissions */}
-              {hasPermission('manageStores') && (
-                <button
-                onClick={handleSync}
-                disabled={syncing || syncStatus.count === 0}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  syncing 
-                    ? 'bg-gray-400 text-white cursor-not-allowed' 
-                    : syncStatus.count > 0
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl border-2 border-blue-700'
-                      : 'bg-gray-400 text-white cursor-not-allowed'
-                }`}
-                title={syncStatus.count > 0 ? `Sync ${syncStatus.count} modified products to all stores` : "No products need syncing"}
-              >
-                <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing...' : syncStatus.count > 0 ? `Sync ${syncStatus.count} Products` : 'All Synced'}
-              </button>
-              )}
-
-              {/* Sync By Store Button - Only show if user has sync permissions */}
-              {hasPermission('manageStores') && syncStatus.count > 0 && (
-                <div className="relative">
-                  <button
-                    onClick={() => setShowStoreSync(!showStoreSync)}
-                    disabled={syncingStore || stores.length === 0}
-                    className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl border-2 border-green-700"
-                    title="Sync to a specific store only"
-                  >
-                    <Package className="h-4 w-4" />
-                    Sync By Store
-                  </button>
-
-                  {/* Store Selection Dropdown */}
-                  {showStoreSync && (
-                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-md shadow-lg border border-gray-200 z-50">
-                      <div className="p-4">
-                        <h3 className="text-sm font-medium text-gray-900 mb-3">Select Store to Sync</h3>
-                        <select
-                          value={selectedStore}
-                          onChange={(e) => setSelectedStore(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                          <option value="">Choose a store...</option>
-                          {stores.map((store: any) => (
-                            <option key={store._id} value={store._id}>
-                              {store.store_name} ({store.store_domain})
-                            </option>
-                          ))}
-                        </select>
-                        <div className="flex gap-2 mt-3">
-                          <button
-                            onClick={handleSyncByStore}
-                            disabled={!selectedStore || syncingStore}
-                            className="flex-1 px-3 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md disabled:bg-gray-400"
-                          >
-                            {syncingStore ? 'Syncing...' : `Sync ${syncStatus.count} Products`}
-                          </button>
-                          <button
-                            onClick={() => setShowStoreSync(false)}
-                            className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* User Menu */}
-            <div className="relative">
-              <button
-                onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md"
-              >
-                <UserIcon className="h-5 w-5" />
-                <span className="hidden md:block">{user?.username}</span>
-                <span className="text-xs text-gray-500 hidden lg:block">({user?.role})</span>
-              </button>
-
-              {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-50">
-                  <div className="py-1">
-                    <div className="px-4 py-2 border-b border-gray-100">
-                      <p className="text-sm font-medium text-gray-900">{user?.username}</p>
-                      <p className="text-xs text-gray-500">{user?.email}</p>
-                      <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        logout();
-                        setShowUserMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      Sign Out
-                    </button>
+              {/* Date and Time Display */}
+              <div className="hidden md:flex items-center gap-4 text-sm text-gray-600">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-gray-500" />
+                  <div className="text-right">
+                    <div className="font-medium text-gray-900">{formatTime(currentTime)}</div>
+                    <div className="text-xs text-gray-500">{formatDate(currentTime)}</div>
                   </div>
                 </div>
-              )}
+              </div>
+
+              {/* Admin Account Details */}
+              <div className="flex items-center gap-3 px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-blue-100 rounded-full">
+                    <Shield className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <div className="text-sm">
+                    <div className="font-semibold text-gray-900">{user?.username}</div>
+                    <div className="text-xs text-gray-600 capitalize">{user?.role} Account</div>
+                  </div>
+                </div>
+                
+                {/* Logout Button */}
+                <button
+                  onClick={() => {
+                    logout();
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
+                  title="Sign Out"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span className="hidden sm:block">Sign Out</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
