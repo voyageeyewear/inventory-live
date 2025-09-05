@@ -69,8 +69,8 @@ class ApiService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success'] == true) {
-          await setAuthToken(data['data']['token']);
-          await setUserData(data['data']['user']);
+          await setAuthToken(data['token']);
+          await setUserData(data['user']);
           print('✅ Login successful, token saved');
         }
         return data;

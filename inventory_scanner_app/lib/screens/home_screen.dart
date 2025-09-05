@@ -31,7 +31,7 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             Text(
-              '${user['firstName']} ${user['lastName']}',
+              '${user['username'] ?? 'User'}',
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
