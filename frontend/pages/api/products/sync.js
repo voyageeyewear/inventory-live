@@ -138,7 +138,7 @@ export default async function handler(req, res) {
     // Authenticate user
     const user = await authenticateToken(req)
     
-    const { productId, sku } = req.body
+    const { productId, sku, storeId } = req.body
     
     if (!productId && !sku) {
       return res.status(400).json({ message: 'Product ID or SKU is required' })
@@ -158,8 +158,16 @@ export default async function handler(req, res) {
       return res.status(404).json({ message: 'Product not found' })
     }
 
-    // Get connected stores
-    const storesResult = await query('SELECT * FROM stores WHERE connected = true AND is_active = true')
+    // Get connected stores (filter by storeId if provided)
+    let storesQuery = 'SELECT * FROM stores WHERE connected = true AND is_active = true'
+    let storesParams = []
+    
+    if (storeId) {
+      storesQuery += ' AND id = $1'
+      storesParams = [storeId]
+    }
+    
+    const storesResult = await query(storesQuery, storesParams)
     const stores = storesResult.rows
 
     if (stores.length === 0) {

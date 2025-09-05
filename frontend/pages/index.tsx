@@ -37,6 +37,10 @@ export default function Products() {
     description: '',
     image_url: ''
   })
+  const [stores, setStores] = useState<any[]>([])
+  const [showStoreSelector, setShowStoreSelector] = useState(false)
+  const [selectedStore, setSelectedStore] = useState<string>('')
+  const [bulkSyncing, setBulkSyncing] = useState(false)
 
   const { user, isFullyAuthenticated } = useAuth()
 
@@ -44,6 +48,7 @@ export default function Products() {
     if (isFullyAuthenticated) {
       console.log('Products: Making API call - fully authenticated')
       fetchProducts()
+      fetchStores()
     }
   }, [isFullyAuthenticated])
 
@@ -91,6 +96,93 @@ export default function Products() {
       event.target.value = ''
     } finally {
       setUploading(false)
+    }
+  }
+
+  const fetchStores = async () => {
+    try {
+      const response = await axios.get('/api/stores')
+      setStores(response.data.filter((store: any) => store.connected))
+    } catch (error) {
+      console.error('Failed to fetch stores:', error)
+    }
+  }
+
+  const handleSyncByStore = async () => {
+    if (!selectedStore) {
+      toast.error('Please select a store')
+      return
+    }
+
+    if (filteredProducts.length === 0) {
+      toast.error('No products to sync')
+      return
+    }
+
+    try {
+      setBulkSyncing(true)
+      let successCount = 0
+      let errorCount = 0
+
+      for (const product of filteredProducts) {
+        try {
+          await axios.post('/api/products/sync', {
+            productId: product.id,
+            storeId: selectedStore
+          })
+          successCount++
+        } catch (error) {
+          errorCount++
+          console.error(`Failed to sync product ${product.sku}:`, error)
+        }
+      }
+
+      toast.success(`Sync completed: ${successCount} successful, ${errorCount} failed`)
+      setShowStoreSelector(false)
+      setSelectedStore('')
+    } catch (error: any) {
+      toast.error('Failed to sync products')
+    } finally {
+      setBulkSyncing(false)
+    }
+  }
+
+  const handleSyncToAllStores = async () => {
+    if (stores.length === 0) {
+      toast.error('No connected stores found')
+      return
+    }
+
+    if (filteredProducts.length === 0) {
+      toast.error('No products to sync')
+      return
+    }
+
+    try {
+      setBulkSyncing(true)
+      let totalSuccess = 0
+      let totalErrors = 0
+
+      for (const product of filteredProducts) {
+        try {
+          const response = await axios.post('/api/products/sync', {
+            productId: product.id
+          })
+          if (response.data.success) {
+            totalSuccess += response.data.summary.successful
+            totalErrors += response.data.summary.failed
+          }
+        } catch (error) {
+          totalErrors++
+          console.error(`Failed to sync product ${product.sku}:`, error)
+        }
+      }
+
+      toast.success(`Bulk sync completed: ${totalSuccess} successful, ${totalErrors} failed across all stores`)
+    } catch (error: any) {
+      toast.error('Failed to sync products to all stores')
+    } finally {
+      setBulkSyncing(false)
     }
   }
 
@@ -422,7 +514,7 @@ export default function Products() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {selectedProducts.size > 0 && (
                 <button
                   onClick={handleSyncSelected}
@@ -437,6 +529,34 @@ export default function Products() {
                   Sync Selected ({selectedProducts.size})
                 </button>
               )}
+              
+              {/* Sync By Store Button */}
+              <button
+                onClick={() => setShowStoreSelector(true)}
+                disabled={bulkSyncing || filteredProducts.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {bulkSyncing ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RotateCw className="h-4 w-4" />
+                )}
+                Sync By Store
+              </button>
+              
+              {/* Sync to All Stores Button */}
+              <button
+                onClick={handleSyncToAllStores}
+                disabled={bulkSyncing || filteredProducts.length === 0 || stores.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              >
+                {bulkSyncing ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Sync to All Stores
+              </button>
             </div>
           </div>
         </div>
@@ -789,8 +909,77 @@ export default function Products() {
             </>
           )}
         </div>
+
+        {/* Store Selector Modal */}
+        {showStoreSelector && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Select Store to Sync</h3>
+                <button
+                  onClick={() => {
+                    setShowStoreSelector(false)
+                    setSelectedStore('')
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Choose Store ({filteredProducts.length} products will be synced)
+                  </label>
+                  <select
+                    value={selectedStore}
+                    onChange={(e) => setSelectedStore(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="">Select a store...</option>
+                    {stores.map((store) => (
+                      <option key={store.id} value={store.id}>
+                        {store.store_name} ({store.store_domain})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => {
+                      setShowStoreSelector(false)
+                      setSelectedStore('')
+                    }}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSyncByStore}
+                    disabled={!selectedStore || bulkSyncing}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {bulkSyncing ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        Syncing...
+                      </>
+                    ) : (
+                      <>
+                        <RotateCw className="h-4 w-4" />
+                        Start Sync
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    </Layout>
+      </Layout>
     </ProtectedRoute>
   )
 }
