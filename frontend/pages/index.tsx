@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import Layout from '../components/Layout'
 import ProtectedRoute from '../components/ProtectedRoute'
-import { Upload, Package, Eye, RefreshCw, CheckSquare, Square, History, X, Edit, Save, Trash2, Sync, FileText } from 'lucide-react'
+import { Upload, Package, Eye, RefreshCw, CheckSquare, Square, History, X, Edit, Save, Trash2, RotateCw, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
@@ -631,7 +631,7 @@ export default function Products() {
                                   className="text-green-600 hover:text-green-900 flex items-center gap-1"
                                   title="Sync product to all stores"
                                 >
-                                  <Sync className="h-4 w-4" />
+                                  <RotateCw className="h-4 w-4" />
                                   Sync
                                 </button>
                                 <button
