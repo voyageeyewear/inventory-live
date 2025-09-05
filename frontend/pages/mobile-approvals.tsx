@@ -119,7 +119,7 @@ export default function MobileApprovals() {
   }
 
   return (
-    <ProtectedRoute requiredPermissions={['manageStores']}>
+    <ProtectedRoute requiredPermission="manageStores">
       <Layout>
         <div className="space-y-6">
           {/* Header */}
