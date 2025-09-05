@@ -73,6 +73,44 @@ class _LoginScreenState extends State<LoginScreen> {
     _passwordController.text = 'admin123';
   }
 
+  Future<void> _testConnectivity() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final result = await _apiService.testConnectivity();
+      _showInfoDialog(
+        'Connectivity Test',
+        result['success'] == true 
+          ? '✅ Server is reachable!\n\nURL: ${ApiService.baseUrl}\nStatus: ${result['message']}'
+          : '❌ Connection failed!\n\nURL: ${ApiService.baseUrl}\nError: ${result['message']}'
+      );
+    } catch (e) {
+      _showInfoDialog('Connectivity Test', '❌ Test failed!\n\nError: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _showInfoDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -258,9 +296,32 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
+                
+                // Connectivity Test Button
+                OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _testConnectivity,
+                  icon: const Icon(Icons.wifi_find, size: 18),
+                  label: const Text('Test Server Connection'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    side: BorderSide(color: Colors.grey[400]!),
+                  ),
+                ),
+                
+                const SizedBox(height: 16),
                 
                 // Footer
+                Text(
+                  'Current API: ${ApiService.baseUrl}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey[600],
+                    fontFamily: 'monospace',
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
                 Text(
                   'Make sure your inventory system is running on your network',
                   style: TextStyle(
