@@ -82,6 +82,9 @@ export default function Reports() {
   const [productActivity, setProductActivity] = useState<ProductActivity[]>([]);
   const [syncPerformance, setSyncPerformance] = useState<any[]>([]);
   const [errorAnalysis, setErrorAnalysis] = useState<any[]>([]);
+  const [auditReports, setAuditReports] = useState<any[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<string>('');
+  const [productAuditData, setProductAuditData] = useState<any>(null);
 
   const fetchReportsData = async () => {
     setLoading(true);
@@ -124,6 +127,12 @@ export default function Reports() {
     fetchReportsData();
   }, [dateRange]);
 
+  useEffect(() => {
+    if (activeTab === 'audit') {
+      fetchAuditReports();
+    }
+  }, [activeTab]);
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString();
   };
@@ -132,12 +141,38 @@ export default function Reports() {
     return new Intl.NumberFormat().format(num);
   };
 
+  const fetchAuditReports = async () => {
+    try {
+      // Fetch all products for audit selection
+      const productsResponse = await axios.get('/api/products');
+      setAuditReports(productsResponse.data.slice(0, 50)); // Limit to 50 products for performance
+    } catch (error) {
+      console.error('Failed to fetch audit reports:', error);
+    }
+  };
+
+  const fetchProductAudit = async (productId: string, sku: string) => {
+    try {
+      const response = await axios.post('/api/products/audit', {
+        productId: parseInt(productId),
+        sku: sku
+      });
+      if (response.data.success) {
+        setProductAuditData(response.data.audit);
+      }
+    } catch (error) {
+      console.error('Failed to fetch product audit:', error);
+      toast.error('Failed to fetch product audit');
+    }
+  };
+
   const tabs = [
     { id: 'overview', name: 'Overview', icon: BarChart3 },
     { id: 'daily', name: 'Daily Movements', icon: Calendar },
     { id: 'stores', name: 'Store Performance', icon: Store },
     { id: 'products', name: 'Product Activity', icon: Package },
-    { id: 'sync', name: 'Sync Performance', icon: Activity }
+    { id: 'sync', name: 'Sync Performance', icon: Activity },
+    { id: 'audit', name: 'Audit Reports', icon: FileText }
   ];
 
   return (
@@ -539,6 +574,165 @@ export default function Reports() {
                           ))}
                         </tbody>
                       </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Audit Reports Tab */}
+            {activeTab === 'audit' && (
+              <div className="space-y-6">
+                {/* Product Selection */}
+                <div className="bg-white rounded-lg shadow border p-6">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Product-wise Audit Reports</h3>
+                  <p className="text-sm text-gray-600 mb-4">Select a product to view detailed audit history with timestamps and changes</p>
+                  
+                  <div className="flex gap-4 items-end">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Select Product
+                      </label>
+                      <select
+                        value={selectedProduct}
+                        onChange={(e) => setSelectedProduct(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="">Choose a product...</option>
+                        {auditReports.map((product: any) => (
+                          <option key={product.id} value={`${product.id}|${product.sku}`}>
+                            {product.product_name} ({product.sku}) - {product.quantity} units
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (selectedProduct) {
+                          const [productId, sku] = selectedProduct.split('|');
+                          fetchProductAudit(productId, sku);
+                        }
+                      }}
+                      disabled={!selectedProduct}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                      Generate Report
+                    </button>
+                  </div>
+                </div>
+
+                {/* Audit Report Display */}
+                {productAuditData && (
+                  <div className="bg-white rounded-lg shadow border">
+                    <div className="px-6 py-4 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-lg font-medium text-gray-900">
+                            Audit Report: {productAuditData.product.product_name}
+                          </h3>
+                          <p className="text-sm text-gray-600">
+                            SKU: {productAuditData.product.sku} | Current Stock: {productAuditData.product.current_quantity} units
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const reportData = {
+                              product: productAuditData.product,
+                              summary: productAuditData.summary,
+                              changes: productAuditData.changes_timeline,
+                              generated_at: new Date().toISOString()
+                            };
+                            console.log('Audit Report Export:', reportData);
+                            toast.success('Report exported to console');
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
+                        >
+                          <Download className="h-4 w-4" />
+                          Export
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Summary Cards */}
+                    <div className="p-6 border-b border-gray-200">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="bg-blue-50 p-4 rounded-lg">
+                          <div className="text-sm font-medium text-blue-600">Total Changes</div>
+                          <div className="text-2xl font-bold text-blue-900">{productAuditData.summary.total_changes}</div>
+                        </div>
+                        <div className="bg-green-50 p-4 rounded-lg">
+                          <div className="text-sm font-medium text-green-600">Stock Operations</div>
+                          <div className="text-2xl font-bold text-green-900">{productAuditData.summary.total_stock_changes}</div>
+                        </div>
+                        <div className="bg-purple-50 p-4 rounded-lg">
+                          <div className="text-sm font-medium text-purple-600">Barcode Scans</div>
+                          <div className="text-2xl font-bold text-purple-900">{productAuditData.summary.total_scans}</div>
+                        </div>
+                        <div className="bg-orange-50 p-4 rounded-lg">
+                          <div className="text-sm font-medium text-orange-600">Net Change</div>
+                          <div className="text-2xl font-bold text-orange-900">
+                            {productAuditData.summary.quantity_trend.net_change > 0 ? '+' : ''}
+                            {productAuditData.summary.quantity_trend.net_change}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Detailed Timeline */}
+                    <div className="p-6">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-4">📋 Complete Change History</h4>
+                      {productAuditData.changes_timeline.length > 0 ? (
+                        <div className="space-y-4 max-h-96 overflow-y-auto">
+                          {productAuditData.changes_timeline.map((change: any, index: number) => (
+                            <div key={change.id} className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg border-l-4 border-blue-500">
+                              <div className="flex-shrink-0">
+                                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                  <span className="text-sm font-bold text-blue-600">{index + 1}</span>
+                                </div>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between mb-2">
+                                  <h5 className="text-base font-semibold text-gray-900">{change.change_type}</h5>
+                                  <div className="text-right">
+                                    <div className="text-sm font-medium text-gray-900">{change.formatted_date}</div>
+                                    <div className="text-xs text-gray-500">
+                                      {new Date(change.timestamp).toLocaleTimeString()}
+                                    </div>
+                                  </div>
+                                </div>
+                                <p className="text-sm text-gray-700 mb-2">{change.description}</p>
+                                {change.notes && (
+                                  <div className="bg-yellow-50 border border-yellow-200 rounded p-2 mb-2">
+                                    <p className="text-xs text-yellow-800">
+                                      <strong>Notes:</strong> {change.notes}
+                                    </p>
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-6 text-xs text-gray-500">
+                                  <span className="flex items-center gap-1">
+                                    👤 <strong>Performed by:</strong> {change.performed_by}
+                                  </span>
+                                  {change.user_email && (
+                                    <span className="flex items-center gap-1">
+                                      📧 {change.user_email}
+                                    </span>
+                                  )}
+                                  {change.previous_quantity !== null && change.new_quantity !== null && (
+                                    <span className="flex items-center gap-1">
+                                      📊 <strong>Change:</strong> {change.previous_quantity} → {change.new_quantity} units
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-gray-500">
+                          <FileText className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                          <p>No audit history available for this product</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

@@ -41,6 +41,9 @@ export default function Products() {
   const [showStoreSelector, setShowStoreSelector] = useState(false)
   const [selectedStore, setSelectedStore] = useState<string>('')
   const [bulkSyncing, setBulkSyncing] = useState(false)
+  const [showAuditModal, setShowAuditModal] = useState(false)
+  const [auditData, setAuditData] = useState<any>(null)
+  const [loadingAudit, setLoadingAudit] = useState(false)
 
   const { user, isFullyAuthenticated } = useAuth()
 
@@ -382,43 +385,21 @@ export default function Products() {
 
   const handleAuditProduct = async (product: Product) => {
     try {
+      setLoadingAudit(true)
       const response = await axios.post('/api/products/audit', {
         productId: product.id,
         sku: product.sku
       })
 
       if (response.data.success) {
-        const audit = response.data.audit
-        
-        // Create a detailed audit report
-        let auditReport = `📊 PRODUCT AUDIT REPORT\n\n`
-        auditReport += `Product: ${audit.product.product_name}\n`
-        auditReport += `SKU: ${audit.product.sku}\n`
-        auditReport += `Current Quantity: ${audit.product.current_quantity}\n`
-        auditReport += `Image: ${audit.product.image_url ? 'Available' : 'No image'}\n`
-        auditReport += `Category: ${audit.product.category || 'N/A'}\n\n`
-        
-        auditReport += `📈 SUMMARY:\n`
-        auditReport += `• Total Stock Changes: ${audit.summary.total_stock_changes}\n`
-        auditReport += `• Total Scans: ${audit.summary.total_scans}\n`
-        auditReport += `• Last Stock Change: ${audit.summary.last_stock_change ? new Date(audit.summary.last_stock_change).toLocaleString() : 'Never'}\n`
-        auditReport += `• Last Scan: ${audit.summary.last_scan ? new Date(audit.summary.last_scan).toLocaleString() : 'Never'}\n\n`
-        
-        if (audit.stock_history.length > 0) {
-          auditReport += `📋 RECENT STOCK HISTORY (Last ${Math.min(5, audit.stock_history.length)}):\n`
-          audit.stock_history.slice(0, 5).forEach((log: any, index: number) => {
-            auditReport += `${index + 1}. ${log.type.toUpperCase()} - ${log.quantity} units by ${log.user_name} (${new Date(log.created_at).toLocaleDateString()})\n`
-          })
-        }
-        
-        alert(auditReport)
-        
-        // Also log detailed data to console
-        console.log('Full Audit Data:', audit)
+        setAuditData(response.data.audit)
+        setShowAuditModal(true)
         toast.success('✅ Audit data retrieved successfully')
       }
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to get audit data')
+    } finally {
+      setLoadingAudit(false)
     }
   }
 
@@ -770,10 +751,15 @@ export default function Products() {
                                 </button>
                                 <button
                                   onClick={() => handleAuditProduct(product)}
-                                  className="text-purple-600 hover:text-purple-900 flex items-center gap-1"
+                                  disabled={loadingAudit}
+                                  className="text-purple-600 hover:text-purple-900 flex items-center gap-1 disabled:opacity-50"
                                   title="View product audit history"
                                 >
-                                  <FileText className="h-4 w-4" />
+                                  {loadingAudit ? (
+                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <FileText className="h-4 w-4" />
+                                  )}
                                   Audit
                                 </button>
                               </>
@@ -974,6 +960,145 @@ export default function Products() {
                     )}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Audit Modal */}
+        {showAuditModal && auditData && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">Product Audit Report</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {auditData.product.product_name} ({auditData.product.sku})
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowAuditModal(false)
+                    setAuditData(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                {/* Product Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="text-sm font-medium text-blue-600">Current Stock</div>
+                    <div className="text-2xl font-bold text-blue-900">{auditData.product.current_quantity}</div>
+                    <div className="text-xs text-blue-600">units</div>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <div className="text-sm font-medium text-green-600">Total Changes</div>
+                    <div className="text-2xl font-bold text-green-900">{auditData.summary.total_changes}</div>
+                    <div className="text-xs text-green-600">transactions</div>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <div className="text-sm font-medium text-purple-600">Total Scans</div>
+                    <div className="text-2xl font-bold text-purple-900">{auditData.summary.total_scans}</div>
+                    <div className="text-xs text-purple-600">scans</div>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg">
+                    <div className="text-sm font-medium text-orange-600">Net Change</div>
+                    <div className="text-2xl font-bold text-orange-900">
+                      {auditData.summary.quantity_trend.net_change > 0 ? '+' : ''}
+                      {auditData.summary.quantity_trend.net_change}
+                    </div>
+                    <div className="text-xs text-orange-600">units</div>
+                  </div>
+                </div>
+
+                {/* Changes Timeline */}
+                <div className="mb-6">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">📋 Changes Timeline</h4>
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {auditData.changes_timeline.length > 0 ? (
+                      auditData.changes_timeline.map((change: any, index: number) => (
+                        <div key={change.id} className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+                          <div className="flex-shrink-0">
+                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                              <span className="text-xs font-bold text-blue-600">{index + 1}</span>
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <h5 className="text-sm font-medium text-gray-900">{change.change_type}</h5>
+                              <span className="text-xs text-gray-500">{change.formatted_date}</span>
+                            </div>
+                            <p className="text-sm text-gray-600 mt-1">{change.description}</p>
+                            {change.notes && (
+                              <p className="text-xs text-gray-500 mt-1 italic">Notes: {change.notes}</p>
+                            )}
+                            <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                              <span>👤 {change.performed_by}</span>
+                              {change.user_email && <span>📧 {change.user_email}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        <FileText className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                        <p>No changes recorded yet</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Scan History */}
+                {auditData.scan_history.length > 0 && (
+                  <div>
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4">📱 Recent Scans</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {auditData.scan_history.slice(0, 6).map((scan: any) => (
+                        <div key={scan.id} className="bg-purple-50 p-3 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-purple-900">
+                              {scan.quantity} units
+                            </span>
+                            <span className="text-xs text-purple-600">
+                              {scan.formatted_date}
+                            </span>
+                          </div>
+                          <div className="text-xs text-purple-600 mt-1">
+                            Scan #{scan.scan_count} • Session: {scan.session_id?.slice(-8)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
+                <button
+                  onClick={() => {
+                    setShowAuditModal(false)
+                    setAuditData(null)
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    console.log('Full Audit Data:', auditData)
+                    toast.success('Audit data logged to console')
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Export to Console
+                </button>
               </div>
             </div>
           </div>
