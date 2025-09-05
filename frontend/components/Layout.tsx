@@ -21,7 +21,8 @@ import {
   Scan,
   List,
   Clock,
-  Shield
+  Shield,
+  Smartphone
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
@@ -39,6 +40,7 @@ const allNavigation = [
   { name: 'Scan List', href: '/scan-list', icon: List, permission: 'viewProducts' },
   { name: 'Stock-In', href: '/stock-in', icon: TrendingUp, permission: 'viewProducts' },
   { name: 'Stock-Out', href: '/stock-out', icon: TrendingDown, permission: 'viewProducts' },
+  { name: 'Mobile Approvals', href: '/mobile-approvals', icon: Smartphone, permission: 'manageStores' },
   { name: 'Data Management', href: '/data-management', icon: Database, permission: 'viewProducts' },
   { name: 'Sync Activity', href: '/sync-activity', icon: Activity, permission: 'viewProducts' },
   { name: 'Reports', href: '/reports', icon: FileText, permission: 'viewProducts' },

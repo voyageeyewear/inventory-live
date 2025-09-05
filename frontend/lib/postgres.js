@@ -164,6 +164,26 @@ export async function initializeDatabase() {
       )
     `)
 
+    // Create mobile_transactions table for approval workflow
+    await query(`
+      CREATE TABLE IF NOT EXISTS mobile_transactions (
+        id SERIAL PRIMARY KEY,
+        product_id INTEGER REFERENCES products(id),
+        sku VARCHAR(255) NOT NULL,
+        transaction_type VARCHAR(50) NOT NULL, -- 'stock_in' or 'stock_out'
+        quantity INTEGER NOT NULL,
+        notes TEXT,
+        current_stock INTEGER, -- Stock at time of request
+        status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
+        requested_by_user_id INTEGER REFERENCES users(id),
+        requested_by_username VARCHAR(255),
+        approved_by_user_id INTEGER REFERENCES users(id),
+        approved_by_username VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        approved_at TIMESTAMP
+      )
+    `)
+
     // Create indexes for better performance
     await query(`CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku)`)
     await query(`CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)`)
@@ -171,6 +191,8 @@ export async function initializeDatabase() {
     await query(`CREATE INDEX IF NOT EXISTS idx_stock_logs_user_id ON stock_logs(user_id)`)
     await query(`CREATE INDEX IF NOT EXISTS idx_scan_logs_user_id ON scan_logs(user_id)`)
     await query(`CREATE INDEX IF NOT EXISTS idx_scan_logs_sku ON scan_logs(sku)`)
+    await query(`CREATE INDEX IF NOT EXISTS idx_mobile_transactions_status ON mobile_transactions(status)`)
+    await query(`CREATE INDEX IF NOT EXISTS idx_mobile_transactions_sku ON mobile_transactions(sku)`)
 
     console.log('Database tables initialized successfully')
     

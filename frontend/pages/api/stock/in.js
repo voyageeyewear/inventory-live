@@ -33,14 +33,19 @@ export default async function handler(req, res) {
     // Authenticate user
     const user = await authenticateToken(req)
     
-    const { productId, quantity, notes = '', store_id = null } = req.body
+    const { productId, sku, quantity, notes = '', store_id = null } = req.body
 
-    if (!productId || !quantity || quantity <= 0) {
-      return res.status(400).json({ message: 'Product ID and valid quantity are required' })
+    if ((!productId && !sku) || !quantity || quantity <= 0) {
+      return res.status(400).json({ message: 'Product ID or SKU and valid quantity are required' })
     }
 
-    // Find product
-    const productResult = await query('SELECT * FROM products WHERE id = $1', [productId])
+    // Find product by ID or SKU
+    let productResult
+    if (productId) {
+      productResult = await query('SELECT * FROM products WHERE id = $1', [productId])
+    } else {
+      productResult = await query('SELECT * FROM products WHERE sku = $1 AND is_active = true', [sku])
+    }
     
     if (productResult.rows.length === 0) {
       return res.status(404).json({ message: 'Product not found' })
@@ -48,40 +53,68 @@ export default async function handler(req, res) {
 
     const product = productResult.rows[0]
 
-    // Update product quantity
-    const newQuantity = (product.quantity || 0) + parseInt(quantity)
-    
-    await query(
-      'UPDATE products SET quantity = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [newQuantity, productId]
-    )
+    // Check if this is a mobile request (has SKU but no productId)
+    if (!productId && sku) {
+      // Create pending mobile transaction instead of direct update
+      const result = await query(`
+        INSERT INTO mobile_transactions 
+        (product_id, sku, transaction_type, quantity, notes, requested_by_user_id, requested_by_username, status, current_stock)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING *
+      `, [
+        product.id,
+        sku,
+        'stock_in',
+        parseInt(quantity),
+        notes || 'Mobile barcode scan - Stock In',
+        user.id,
+        user.username,
+        'pending',
+        product.quantity || 0
+      ])
 
-    // Create stock log entry
-    await query(`
-      INSERT INTO stock_logs (product_id, product_name, sku, type, quantity, previous_quantity, new_quantity, notes, store_id, user_id, user_name)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-    `, [
-      productId,
-      product.product_name,
-      product.sku,
-      'stock_in',
-      parseInt(quantity),
-      product.quantity || 0,
-      newQuantity,
-      notes,
-      store_id,
-      user.id,
-      user.username
-    ])
+      res.status(201).json({
+        success: true,
+        message: 'Stock in request submitted for approval',
+        data: result.rows[0],
+        requiresApproval: true
+      })
+    } else {
+      // Direct update for web requests
+      const newQuantity = (product.quantity || 0) + parseInt(quantity)
+      
+      await query(
+        'UPDATE products SET quantity = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+        [newQuantity, product.id]
+      )
 
-    // Get updated product
-    const updatedProductResult = await query('SELECT * FROM products WHERE id = $1', [productId])
+      // Create stock log entry
+      await query(`
+        INSERT INTO stock_logs (product_id, product_name, sku, type, quantity, previous_quantity, new_quantity, notes, store_id, user_id, user_name)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `, [
+        product.id,
+        product.product_name,
+        product.sku,
+        'stock_in',
+        parseInt(quantity),
+        product.quantity || 0,
+        newQuantity,
+        notes,
+        store_id,
+        user.id,
+        user.username
+      ])
 
-    res.status(200).json({
-      success: true,
-      message: 'Stock added successfully',
-      product: updatedProductResult.rows[0]
-    })
+      // Get updated product
+      const updatedProductResult = await query('SELECT * FROM products WHERE id = $1', [product.id])
+
+      res.status(200).json({
+        success: true,
+        message: 'Stock added successfully',
+        product: updatedProductResult.rows[0]
+      })
+    }
   } catch (error) {
     console.error('Stock in error:', error)
     if (error.message === 'Authentication failed') {
