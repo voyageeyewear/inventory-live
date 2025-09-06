@@ -1,450 +1,435 @@
-# 🏪 Multi-Store Inventory Management System
+# 📦 Voyage Eyewear Inventory Management System
 
-A comprehensive **Shopify Multi-Store Inventory Management System** built with Next.js, Node.js, and MongoDB. This system allows you to manage inventory across multiple Shopify stores from a single dashboard, with CSV upload capabilities, real-time sync, and detailed audit tracking.
-
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Node.js](https://img.shields.io/badge/node.js-18+-green.svg)
-![Next.js](https://img.shields.io/badge/next.js-13+-black.svg)
-![MongoDB](https://img.shields.io/badge/mongodb-6+-green.svg)
+A comprehensive full-stack inventory management system with barcode scanning capabilities, built for Voyage Eyewear. This system includes a web dashboard for administrators and a mobile app for warehouse staff to manage inventory efficiently.
 
 ## 🌟 Features
 
-### 📊 **Dashboard & Analytics**
-- **Real-time Overview**: Comprehensive dashboard with inventory statistics
-- **Low Stock Alerts**: Automatic notifications for products running low
-- **Recent Activity**: Track all sync and stock movements
-- **Visual Analytics**: Charts and graphs for inventory insights
+### 🖥️ Web Dashboard
+- **Product Management**: Add, edit, delete, and view products with images
+- **Inventory Tracking**: Real-time stock levels with automatic updates
+- **CSV Import/Export**: Bulk product uploads and data management
+- **Shopify Integration**: Sync inventory with connected Shopify stores
+- **Mobile Transaction Approval**: Review and approve mobile app transactions
+- **Comprehensive Reporting**: Detailed analytics and audit trails
+- **User Management**: Role-based access control
+- **Scan History**: Track all barcode scans and mobile activities
 
-### 🛍️ **Multi-Store Management**
-- **Shopify Integration**: Connect multiple Shopify stores via OAuth
-- **Centralized Control**: Manage all stores from one interface
-- **Store Status Monitoring**: Real-time connection status for each store
-- **Bulk Operations**: Sync inventory across all connected stores
+### 📱 Mobile App
+- **Barcode Scanning**: Fast and accurate barcode recognition
+- **Stock Management**: Stock in/out operations with approval workflow
+- **Offline Capability**: Works without internet connection
+- **Real-time Sync**: Automatic data synchronization when online
+- **User Authentication**: Secure login with JWT tokens
 
-### 📦 **Product Management**
-- **Master Inventory**: Single source of truth for all product quantities
-- **CSV Upload**: Bulk import/update products via CSV files
-- **Individual Product Sync**: Selective synchronization per product
-- **Multi-Product Sync**: Bulk sync selected products
-- **Product Editing**: In-line editing with real-time updates
+## 🚀 Live Demo
 
-### 📈 **Stock Operations**
-- **Stock-In Management**: Track incoming inventory
-- **Stock-Out Management**: Monitor outgoing inventory
-- **Automatic Calculations**: Real-time quantity adjustments
-- **Audit Trail**: Complete history of all stock movements
+### 🌐 Web Dashboard
+**URL**: https://local-inventory-management-system-qidqhjmqq.vercel.app
 
-### 🔍 **Audit & Tracking**
-- **Sync Activity**: Detailed history of all synchronization operations
-- **Stock Audit**: Complete log of inventory changes
-- **Product History**: Per-product audit trail
-- **Error Tracking**: Failed operations with detailed error messages
-- **Performance Metrics**: Sync duration and success rates
+**Demo Credentials**:
+- **Username**: `admin`
+- **Password**: `admin123`
 
-### 🔧 **Advanced Features**
-- **Smart CSV Processing**: Flexible column mapping for various CSV formats
-- **Rate Limiting**: Shopify API rate limit compliance
-- **Error Handling**: Graceful error recovery and reporting
-- **Search & Filtering**: Advanced product search and filtering
-- **Pagination**: Efficient handling of large product catalogs
+### 📱 Mobile App
+**APK**: `InventoryScanner_Final_ScanHistory.apk`
 
-## 🚀 Quick Start
+**Demo Credentials**:
+- **Username**: `admin`
+- **Password**: `admin123`
 
-### Prerequisites
+## 🏗️ Architecture
 
-Before you begin, ensure you have the following installed:
-- **Node.js** (v18 or higher)
-- **MongoDB** (v6 or higher)
-- **Git**
-- **Shopify Partner Account** (for API access)
+### Frontend (Web Dashboard)
+- **Framework**: Next.js 14 with TypeScript
+- **Styling**: Tailwind CSS
+- **UI Components**: Lucide React icons
+- **State Management**: React Context API
+- **Authentication**: JWT with axios interceptors
 
-### Installation
+### Backend (API)
+- **Runtime**: Node.js with Next.js API routes
+- **Database**: PostgreSQL (Neon)
+- **Authentication**: JWT tokens
+- **File Upload**: Formidable with CSV parsing
+- **External APIs**: Shopify REST API
 
-1. **Clone the repository**
+### Mobile App
+- **Framework**: Flutter
+- **Language**: Dart
+- **Barcode Scanning**: mobile_scanner package
+- **HTTP Client**: http package
+- **Local Storage**: shared_preferences
+- **Permissions**: camera, internet, vibration
+
+### Deployment
+- **Platform**: Vercel
+- **Database**: Neon PostgreSQL
+- **CDN**: Vercel Edge Network
+- **SSL**: Automatic HTTPS
+
+## 📋 Prerequisites
+
+- Node.js 18+ and npm
+- Flutter SDK 3.0+
+- PostgreSQL database (or Neon account)
+- Vercel account (for deployment)
+- Android Studio (for mobile app development)
+
+## 🛠️ Installation & Setup
+
+### 1. Clone Repository
    ```bash
-   git clone https://github.com/voyageeyewear/local-inventory-management-system.git
-   cd local-inventory-management-system
-   ```
+git clone <repository-url>
+cd "Inventory System"
+```
 
-2. **Install dependencies**
+### 2. Environment Variables
+Create `.env.local` in the `frontend` directory:
+```env
+# Database
+DATABASE_URL=postgresql://username:password@host:port/database
+
+# JWT Secret
+JWT_SECRET=your-super-secret-jwt-key-here
+
+# Shopify Store Credentials
+DEVELOPMENT_STORE_ACCESS_TOKEN=your-shopify-access-token
+```
+
+### 3. Install Dependencies
    ```bash
-   # Install root dependencies
-   npm install
-   
-   # Install frontend dependencies
    cd frontend
    npm install
-   
-   # Install backend dependencies
-   cd ../server
-   npm install
-   cd ..
    ```
 
-3. **Set up MongoDB**
+### 4. Database Setup
    ```bash
-   # macOS (using Homebrew)
-   brew tap mongodb/brew
-   brew install mongodb-community
-   brew services start mongodb/brew/mongodb-community
-   
-   # Ubuntu/Debian
-   sudo apt-get install mongodb
-   sudo systemctl start mongodb
-   
-   # Windows
-   # Download and install from https://www.mongodb.com/try/download/community
-   ```
+# Initialize database tables
+npm run dev
+# Visit: http://localhost:3000/api/init-db
+```
 
-4. **Configure environment variables**
-   
-   Create `.env` files in both `frontend` and `server` directories:
-   
-   **Frontend (.env.local):**
-   ```env
-   NEXT_PUBLIC_API_URL=http://localhost:8080
-   ```
-   
-   **Backend (.env):**
-   ```env
-   PORT=8080
-   MONGODB_URI=mongodb://localhost:27017/inventory_management
-   SHOPIFY_API_KEY=your_shopify_api_key
-   SHOPIFY_API_SECRET=your_shopify_api_secret
-   SHOPIFY_SCOPES=read_products,write_products,read_inventory,write_inventory
-   ```
+### 5. Run Development Server
+```bash
+npm run dev
+# Visit: http://localhost:3000
+```
 
-5. **Start the application**
+### 6. Mobile App Setup
+```bash
+cd inventory_barcode_scanner
+flutter pub get
+flutter run
+```
+
+## 📱 Mobile App Build
+
+### Android APK
    ```bash
-   # Option 1: Start both servers simultaneously
-   npm run dev
-   
-   # Option 2: Start servers separately
-   # Terminal 1 - Backend
-   npm run backend
-   
-   # Terminal 2 - Frontend
-   npm run frontend
-   ```
-
-6. **Access the application**
-   - **Frontend**: http://localhost:3000
-   - **Backend API**: http://localhost:8080
-   - **API Health Check**: http://localhost:8080/api/health
-
-## 📁 Project Structure
-
+cd inventory_barcode_scanner
+flutter build apk --release
 ```
-local-inventory-management-system/
-├── 📁 frontend/                 # Next.js Frontend Application
-│   ├── 📁 components/          # Reusable React components
-│   │   └── Layout.tsx          # Main layout with sidebar navigation
-│   ├── 📁 pages/              # Next.js pages
-│   │   ├── index.tsx          # Products management page
-│   │   ├── dashboard.tsx      # Analytics dashboard
-│   │   ├── add-product.tsx    # Add new product form
-│   │   ├── sync-activity.tsx  # Sync history and audit
-│   │   ├── stock-in.tsx       # Stock-in management
-│   │   ├── stock-out.tsx      # Stock-out management
-│   │   └── settings.tsx       # Application settings
-│   ├── 📁 styles/             # CSS and styling files
-│   ├── package.json           # Frontend dependencies
-│   └── next.config.js         # Next.js configuration
-│
-├── 📁 server/                  # Node.js Backend Application
-│   ├── 📁 config/             # Configuration files
-│   │   └── database.js        # MongoDB connection setup
-│   ├── 📁 models/             # Mongoose data models
-│   │   ├── Product.js         # Product schema
-│   │   ├── Store.js           # Store schema
-│   │   ├── SyncAudit.js       # Sync audit schema
-│   │   └── StockAudit.js      # Stock audit schema
-│   ├── 📁 routes/             # API route handlers
-│   │   ├── products.js        # Product CRUD operations
-│   │   ├── stores.js          # Store management
-│   │   ├── sync.js            # Synchronization operations
-│   │   └── audit.js           # Audit and reporting
-│   ├── 📁 services/           # Business logic services
-│   │   └── shopifyService.js  # Shopify API integration
-│   ├── 📁 utils/              # Utility functions
-│   │   └── csvParser.js       # CSV processing utilities
-│   ├── 📁 middleware/         # Express middleware
-│   │   └── upload.js          # File upload handling
-│   ├── package.json           # Backend dependencies
-│   └── index.js               # Express server entry point
-│
-├── 📁 sample-data/            # Sample CSV files and templates
-│   ├── products-template.csv   # Basic product template
-│   └── products-shopify-format.csv # Shopify export format
-│
-├── 📁 .vscode/               # VS Code configuration
-│   ├── launch.json           # Debug configuration
-│   └── tasks.json            # Task runner configuration
-│
-├── 📄 CSV_FORMAT_GUIDE.md    # CSV format documentation
-├── 📄 package.json           # Root package.json with scripts
-├── 📄 .gitignore            # Git ignore rules
-└── 📄 README.md             # This file
+
+### iOS (requires macOS and Xcode)
+```bash
+cd inventory_barcode_scanner
+flutter build ios --release
 ```
+
+## 🌐 Deployment
+
+### Vercel Deployment
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy
+vercel --prod
+```
+
+### Environment Variables (Vercel)
+Set these in your Vercel dashboard:
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `DEVELOPMENT_STORE_ACCESS_TOKEN`
+
+## 📊 Database Schema
+
+### Core Tables
+- **users**: User accounts and authentication
+- **products**: Product catalog with SKU, name, quantity, images
+- **stores**: Connected Shopify stores
+- **mobile_transactions**: Pending mobile app transactions
+- **stock_logs**: Inventory movement history
+- **scan_logs**: Barcode scan tracking
+
+### Key Relationships
+- Products → Stock Logs (1:many)
+- Users → Mobile Transactions (1:many)
+- Stores → Stock Logs (1:many)
+- Products → Mobile Transactions (1:many)
+
+## 🎯 Usage Guide
+
+### Web Dashboard
+
+#### 1. Login
+- Navigate to the login page
+- Use demo credentials or create new account
+- Dashboard loads with overview statistics
+
+#### 2. Product Management
+- **View Products**: Main products page with search and filters
+- **Add Product**: Use "Add Product" form with image upload
+- **Edit Product**: Click edit button on any product
+- **CSV Upload**: Bulk import products via CSV file
+- **Sync to Shopify**: Sync inventory with connected stores
+
+#### 3. Mobile Approvals
+- **View Pending**: See all mobile app transactions awaiting approval
+- **Approve/Reject**: Review and process mobile transactions
+- **Auto-update**: Approved transactions update product quantities
+
+#### 4. Scan History
+- **View Scans**: See all barcode scans from mobile app
+- **Search/Filter**: Find specific scans by SKU or user
+- **Statistics**: Overview of scanning activity
+
+#### 5. Reports & Analytics
+- **Dashboard**: Key metrics and recent activity
+- **Product Reports**: Detailed product analytics
+- **Audit Reports**: Product-wise change history
+- **Sync Activity**: Shopify synchronization logs
+
+### Mobile App
+
+#### 1. Login
+- Open app and enter credentials
+- Test connectivity with "Test Connection" button
+- Navigate to home screen after successful login
+
+#### 2. Barcode Scanning
+- Tap "Start Scan" to open camera
+- Point camera at barcode
+- App automatically detects and searches product
+- Manual input available via keyboard icon
+
+#### 3. Stock Transactions
+- After scanning, select transaction type (Stock In/Out)
+- Enter quantity and optional notes
+- Submit for admin approval
+- View confirmation message
+
+#### 4. Offline Mode
+- App works without internet connection
+- Transactions queued for sync when online
+- Automatic retry mechanism
 
 ## 🔧 Configuration
 
-### Shopify API Setup
+### Shopify Integration
+1. Create Shopify private app
+2. Generate access token with inventory permissions
+3. Add store details in Settings tab
+4. Test connection and sync products
 
-1. **Create a Shopify Partner Account**
-   - Visit [Shopify Partners](https://partners.shopify.com/)
-   - Create a new app in your partner dashboard
+### User Roles & Permissions
+- **Admin**: Full access to all features
+- **Manager**: Product and inventory management
+- **Staff**: Basic product viewing and mobile app access
 
-2. **Configure App Settings**
-   - Set **App URL**: `http://localhost:3000`
-   - Set **Allowed redirection URL(s)**: `http://localhost:8080/auth/shopify/callback`
-   - Note down your **API Key** and **API Secret**
-
-3. **Set Required Scopes**
-   ```
-   read_products, write_products, read_inventory, write_inventory
-   ```
-
-### MongoDB Configuration
-
-The application uses MongoDB to store:
-- **Products**: Master inventory data
-- **Stores**: Connected Shopify store information
-- **Sync Audit**: History of synchronization operations
-- **Stock Audit**: History of stock movements
-
-Default connection: `mongodb://localhost:27017/inventory_management`
-
-## 📊 API Documentation
-
-### Products API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/products` | Get all products |
-| POST | `/api/products` | Create new product |
-| PUT | `/api/products/:id` | Update product |
-| DELETE | `/api/products/:id` | Delete product |
-| POST | `/api/products/upload` | Upload CSV file |
-
-### Stores API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/stores` | Get all connected stores |
-| POST | `/api/stores` | Add new store |
-| PUT | `/api/stores/:id` | Update store |
-| DELETE | `/api/stores/:id` | Remove store |
-
-### Sync API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/sync/all` | Sync all products to all stores |
-| POST | `/api/sync/test-one` | Sync single product (test) |
-| POST | `/api/sync/multi` | Sync multiple selected products |
-
-### Audit API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/audit/dashboard` | Get dashboard statistics |
-| GET | `/api/audit/sync` | Get sync history |
-| GET | `/api/audit/stock` | Get stock movement history |
-| GET | `/api/audit/product/:sku` | Get product-specific audit |
-
-## 📋 CSV Upload Format
-
-The system supports multiple CSV formats. Here are the supported column names:
-
-### Product Information
-- **SKU**: `SKU`, `sku`, `Variant SKU`, `variant_sku`
-- **Product Name**: `Product Name`, `product_name`, `Title`, `title`
-- **Quantity**: `Quantity`, `quantity`, `Variant Inventory Qty`, `variant_inventory_qty`
-- **Image URL**: `Image`, `image`, `image_url`, `Image Src`, `image_src`
-
-### Sample CSV Format
-```csv
-Title,Type,Variant SKU,Variant Inventory Qty,Image Src
-Sample Product,Physical,SKU123,100,https://example.com/image.jpg
-Another Product,Physical,SKU456,50,https://example.com/image2.jpg
+### Mobile App Configuration
+Update API URL in `lib/services/api_service.dart`:
+```dart
+static const String baseUrl = 'https://your-domain.vercel.app';
 ```
 
-## 🔍 Features in Detail
-
-### Dashboard Analytics
-- **Total Products**: Count of all products in inventory
-- **Total Stores**: Number of connected Shopify stores
-- **Recent Syncs**: Latest synchronization operations
-- **Low Stock Alerts**: Products below threshold quantities
-- **Sync Success Rate**: Performance metrics and statistics
-
-### Product Management
-- **Bulk Import**: Upload thousands of products via CSV
-- **Individual Editing**: In-line editing with real-time updates
-- **Image Management**: Support for product images via URLs
-- **Search & Filter**: Advanced filtering by SKU, name, quantity
-- **Pagination**: Efficient handling of large catalogs
-
-### Sync Operations
-- **Smart Sync**: Only updates products with quantity changes
-- **Rate Limiting**: Respects Shopify API rate limits (2 calls/second)
-- **Error Recovery**: Graceful handling of API failures
-- **Batch Processing**: Efficient bulk operations
-- **Real-time Status**: Live updates during sync operations
-
-### Audit System
-- **Comprehensive Logging**: Every operation is tracked
-- **Detailed History**: Who, what, when, and how much
-- **Error Tracking**: Failed operations with error messages
-- **Performance Metrics**: Sync duration and success rates
-- **Filtering**: Search audit logs by date, product, store, or action
-
-## 🛠️ Development
-
-### Running in Development Mode
-
-1. **Start MongoDB**
-   ```bash
-   brew services start mongodb/brew/mongodb-community
-   ```
-
-2. **Start Backend (Terminal 1)**
-   ```bash
-   cd server
-   npm run dev
-   ```
-
-3. **Start Frontend (Terminal 2)**
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-
-### Available Scripts
-
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start both frontend and backend |
-| `npm run backend` | Start only backend server |
-| `npm run frontend` | Start only frontend server |
-| `npm run build` | Build frontend for production |
-| `npm start` | Start production servers |
-
-### Debugging
-
-The project includes VS Code debug configurations:
-- **Debug Backend**: Attach to Node.js backend
-- **Debug Frontend**: Attach to Next.js frontend
-
-## 🔒 Security Considerations
-
-- **API Keys**: Never commit API keys to version control
-- **Environment Variables**: Use `.env` files for sensitive data
-- **Input Validation**: All CSV uploads are validated
-- **Rate Limiting**: Shopify API rate limits are respected
-- **Error Handling**: Graceful error handling prevents crashes
-
-## 🚀 Deployment
-
-### Production Deployment
-
-1. **Environment Setup**
-   ```bash
-   # Set production environment variables
-   NODE_ENV=production
-   MONGODB_URI=mongodb://your-production-db
-   SHOPIFY_API_KEY=your-production-key
-   SHOPIFY_API_SECRET=your-production-secret
-   ```
-
-2. **Build Application**
-   ```bash
-   cd frontend
-   npm run build
-   
-   cd ../server
-   npm install --production
-   ```
-
-3. **Start Production Servers**
-   ```bash
-   # Backend
-   cd server
-   npm start
-   
-   # Frontend (or use a service like Vercel)
-   cd frontend
-   npm start
-   ```
-
-### Recommended Hosting
-
-- **Frontend**: Vercel, Netlify, or AWS Amplify
-- **Backend**: Heroku, AWS EC2, or DigitalOcean
-- **Database**: MongoDB Atlas, AWS DocumentDB
-
-## 🤝 Contributing
-
-1. **Fork the repository**
-2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
-3. **Commit your changes**: `git commit -m 'Add amazing feature'`
-4. **Push to the branch**: `git push origin feature/amazing-feature`
-5. **Open a Pull Request**
-
-### Development Guidelines
-
-- Follow **ESLint** and **Prettier** configurations
-- Write **meaningful commit messages**
-- Add **tests** for new features
-- Update **documentation** for API changes
-- Ensure **TypeScript** compliance
-
-## 📝 License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support & Troubleshooting
+## 🐛 Troubleshooting
 
 ### Common Issues
 
-1. **MongoDB Connection Error**
+#### 1. Mobile App Login Failed
+- Check API URL in `api_service.dart`
+- Verify internet connection
+- Use "Test Connection" button
+- Check server logs for authentication errors
+
+#### 2. Barcode Scanner Not Working
+- Grant camera permissions
+- Ensure good lighting
+- Try manual input option
+- Check device compatibility
+
+#### 3. Sync Issues
+- Verify Shopify credentials
+- Check store connection status
+- Review sync activity logs
+- Ensure products exist in both systems
+
+#### 4. Database Connection
+- Verify DATABASE_URL format
+- Check Neon database status
+- Review connection pool settings
+- Monitor database logs
+
+### Debug Mode
+Enable debug logging in mobile app:
+```dart
+// In api_service.dart
+print('🔍 Debug: $debugMessage');
+```
+
+## 📈 Performance Optimization
+
+### Web Dashboard
+- Image optimization with Next.js
+- API route caching
+- Pagination for large datasets
+- Lazy loading components
+
+### Mobile App
+- Efficient barcode scanning
+- Background sync queuing
+- Local data caching
+- Memory management
+
+### Database
+- Indexed queries on SKU and user_id
+- Connection pooling
+- Query optimization
+- Regular maintenance
+
+## 🔒 Security
+
+### Authentication
+- JWT tokens with expiration
+- Secure password hashing
+- Role-based access control
+- Session management
+
+### API Security
+- Request validation
+- SQL injection prevention
+- Rate limiting
+- CORS configuration
+
+### Mobile Security
+- Secure token storage
+- HTTPS only communication
+- Certificate pinning
+- Data encryption
+
+## 🧪 Testing
+
+### Web Dashboard
    ```bash
-   # Start MongoDB service
-   brew services start mongodb/brew/mongodb-community
+cd frontend
+npm run test
    ```
 
-2. **Port Already in Use**
+### Mobile App
    ```bash
-   # Kill processes on ports 3000 and 8080
-   lsof -ti:3000 | xargs kill -9
-   lsof -ti:8080 | xargs kill -9
+cd inventory_barcode_scanner
+flutter test
    ```
 
-3. **Shopify API Errors**
-   - Verify API credentials in `.env` file
-   - Check Shopify app permissions and scopes
-   - Ensure store is properly connected
+### API Testing
+   ```bash
+# Test endpoints with curl
+curl -X GET "https://your-domain.vercel.app/api/health"
+```
 
-4. **CSV Upload Issues**
-   - Check CSV format matches supported columns
-   - Verify file encoding (UTF-8 recommended)
-   - Ensure required fields (SKU, Product Name, Quantity) are present
+## 📝 API Documentation
 
-### Getting Help
+### Authentication
+```
+POST /api/auth/login
+Body: { username, password }
+Response: { token, user }
+```
 
-- **Issues**: [GitHub Issues](https://github.com/voyageeyewear/local-inventory-management-system/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/voyageeyewear/local-inventory-management-system/discussions)
-- **Documentation**: Check the `CSV_FORMAT_GUIDE.md` for detailed CSV format help
+### Products
+```
+GET /api/products
+GET /api/products?search=SKU
+POST /api/products
+PUT /api/products/edit
+DELETE /api/products/delete
+```
 
-## 🙏 Acknowledgments
+### Mobile Transactions
+```
+GET /api/mobile-transactions
+POST /api/mobile-transactions
+POST /api/mobile-transactions/approve
+```
 
-- **Shopify** for their comprehensive API
-- **Next.js** team for the amazing React framework
-- **MongoDB** for the flexible database solution
-- **Tailwind CSS** for the beautiful UI components
-- **Lucide React** for the icon library
+### Scan History
+```
+GET /api/scan-history
+POST /api/scan-logs
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
+
+## 📄 License
+
+This project is proprietary software developed for Voyage Eyewear.
+
+## 👥 Support
+
+For technical support or questions:
+- **Email**: support@voyageeyewear.com
+- **Documentation**: This README file
+- **Issues**: GitHub Issues (if applicable)
+
+## 🔄 Version History
+
+### v2.0.0 (Current)
+- ✅ Complete system rebuild with PostgreSQL
+- ✅ Mobile app with barcode scanning
+- ✅ Shopify integration
+- ✅ Mobile transaction approval workflow
+- ✅ Comprehensive scan history
+- ✅ Clean sidebar navigation
+- ✅ Professional header design
+- ✅ Detailed audit trails
+
+### v1.0.0 (Legacy)
+- Basic inventory management
+- MongoDB backend
+- Limited mobile functionality
+
+## 🎯 Roadmap
+
+### Upcoming Features
+- [ ] Multi-language support
+- [ ] Advanced analytics dashboard
+- [ ] Automated reorder alerts
+- [ ] Supplier management
+- [ ] Warehouse locations
+- [ ] Batch operations
+- [ ] Export to Excel/PDF
+- [ ] Mobile push notifications
+
+### Technical Improvements
+- [ ] GraphQL API
+- [ ] Real-time WebSocket updates
+- [ ] Progressive Web App (PWA)
+- [ ] Advanced caching strategies
+- [ ] Microservices architecture
+- [ ] Docker containerization
+- [ ] CI/CD pipeline
+- [ ] Automated testing suite
 
 ---
 
-**Built with ❤️ for efficient inventory management across multiple Shopify stores.**
+**Built with ❤️ for Voyage Eyewear**
+
+*Last Updated: January 2025*
