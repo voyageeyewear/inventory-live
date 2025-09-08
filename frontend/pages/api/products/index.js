@@ -8,7 +8,7 @@ export default async function handler(req, res) {
       case 'GET':
         try {
           const { search } = req.query
-          let queryText = 'SELECT * FROM products WHERE is_active = true'
+          let queryText = 'SELECT *, COALESCE(needs_sync, true) as needs_sync FROM products WHERE is_active = true'
           let queryParams = []
 
           if (search) {

@@ -115,9 +115,12 @@ class _TransactionScreenState extends State<TransactionScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.of(context).pop(); // Close dialog
-              Navigator.of(context).pop(); // Go back to home
-              Navigator.of(context).pop(); // Go back to home from scanner
+              // Close dialog first
+              Navigator.of(context).pop();
+              
+              // Navigate back to home screen by popping until we reach it
+              // This safely handles the navigation stack
+              Navigator.of(context).popUntil((route) => route.isFirst);
             },
             child: const Text('OK'),
           ),

@@ -24,18 +24,32 @@ A comprehensive full-stack inventory management system with barcode scanning cap
 ## 🚀 Live Demo
 
 ### 🌐 Web Dashboard
-**URL**: https://local-inventory-management-system-qidqhjmqq.vercel.app
+**URL**: https://local-inventory-management-system-b0kfk6cqb.vercel.app
 
 **Demo Credentials**:
 - **Username**: `admin`
 - **Password**: `admin123`
 
-### 📱 Mobile App
-**APK**: `InventoryScanner_Final_ScanHistory.apk`
+### 📱 Mobile Apps
+**Latest APK Files**:
+- **Inventory Scanner Pro**: `InventoryBarcodeScanner_Pro_Fixed.apk` (63.6 MB) ✅ **🆕 FIXED INTEGRATION VERSION**
+  - 🎨 **Modern Design**: Professional UI with Material Design 3
+  - 🔊 **Beep Sound**: Audio feedback on successful scans
+  - 📊 **Activity Tracking**: View scan history and approval status
+  - 🚀 **Enhanced UX**: Smooth animations and improved experience
+- **Previous Version**: `InventoryBarcodeScanner_Latest.apk` (60 MB) ✅ **FIXED BLACK SCREEN ISSUE**
+- **Legacy App**: `InventoryScanner_ScanHistory_Latest.apk` (59 MB)
+- **Debug Version**: `InventoryBarcodeScanner_Debug.apk` (155 MB)
 
 **Demo Credentials**:
 - **Username**: `admin`
 - **Password**: `admin123`
+
+📋 **Installation Guides**: 
+- **Professional Version**: See `MOBILE_APP_INSTALL_PROFESSIONAL.md` for the latest Pro version
+- **Previous Versions**: See `MOBILE_APP_INSTALL_UPDATED.md` for older versions
+
+🔧 **Recent Fix**: Fixed navigation issue that caused black screen after transaction submission
 
 ## 🏗️ Architecture
 

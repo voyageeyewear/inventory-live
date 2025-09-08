@@ -38,6 +38,7 @@ const allNavigation = [
   { name: 'Stock-In', href: '/stock-in', icon: TrendingUp, permission: 'viewProducts' },
   { name: 'Stock-Out', href: '/stock-out', icon: TrendingDown, permission: 'viewProducts' },
   { name: 'Mobile Approvals', href: '/mobile-approvals', icon: Smartphone, permission: 'manageStores' },
+  { name: 'Mobile Users', href: '/mobile-users', icon: UserIcon, permission: 'viewProducts' },
   { name: 'Scan History', href: '/scan-history', icon: History, permission: 'viewProducts' },
   { name: 'Data Management', href: '/data-management', icon: Database, permission: 'viewProducts' },
   { name: 'Sync Activity', href: '/sync-activity', icon: Activity, permission: 'viewProducts' },

@@ -181,3 +181,4 @@ uploads/
 *.csv
 !sample-data/*.csv
 .vercel
+*.apk

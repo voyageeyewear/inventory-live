@@ -36,7 +36,7 @@ export default function StockOut() {
     try {
       setLoading(true)
       const response = await axios.get('/api/stock-logs?type=stock_out&limit=50')
-      setStockLogs(response.data.data || response.data || [])
+      setStockLogs(response.data.stockLogs || [])
     } catch (error: any) {
       console.error('Fetch stock logs error:', error)
       toast.error(error.response?.data?.message || 'Failed to fetch stock logs')

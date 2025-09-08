@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:vibration/vibration.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../services/api_service.dart';
 import 'transaction_screen.dart';
 
@@ -18,6 +19,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     torchEnabled: false,
   );
   final ApiService _apiService = ApiService();
+  final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isScanning = true;
   bool _isLoading = false;
   String? _scannedCode;
@@ -32,6 +34,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   @override
   void dispose() {
     _controller.dispose();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -77,7 +80,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       _scannedCode = code;
     });
     
-    // Vibrate on scan
+    // Vibrate and beep on scan
     try {
       if (await Vibration.hasVibrator() ?? false) {
         Vibration.vibrate(duration: 100);
@@ -86,8 +89,24 @@ class _ScannerScreenState extends State<ScannerScreen> {
       print('Vibration error: $e');
     }
     
+    // Play beep sound
+    await _playBeepSound();
+    
     // Search for product
     await _searchProduct(code);
+  }
+
+  Future<void> _playBeepSound() async {
+    try {
+      // Use a simple system beep sound
+      // We'll use a URL source for a short beep sound
+      await _audioPlayer.play(UrlSource('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT')).catchError((e) {
+        // If beep fails, just continue silently
+        print('Beep sound not available: $e');
+      });
+    } catch (e) {
+      print('Audio error: $e');
+    }
   }
 
   Future<void> _searchProduct(String sku) async {

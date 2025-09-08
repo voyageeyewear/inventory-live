@@ -1,0 +1,1110 @@
+import { useState, useEffect } from 'react'
+import Layout from '../components/Layout'
+import ProtectedRoute from '../components/ProtectedRoute'
+import { Upload, Package, Eye, RefreshCw, CheckSquare, Square, History, X, Edit, Save, Trash2, RotateCw, FileText } from 'lucide-react'
+import toast from 'react-hot-toast'
+import axios from 'axios'
+import { useAuth } from '../contexts/AuthContext'
+
+interface Product {
+  id: number
+  sku: string
+  product_name: string
+  category: string
+  price: string
+  quantity: number
+  description: string
+  image_url?: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export default function Products() {
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
+  const [syncing, setSyncing] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [productsPerPage] = useState(100)
+  const [editingProduct, setEditingProduct] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({
+    product_name: '',
+    category: '',
+    quantity: '',
+    description: '',
+    image_url: ''
+  })
+  const [stores, setStores] = useState<any[]>([])
+  const [showStoreSelector, setShowStoreSelector] = useState(false)
+  const [selectedStore, setSelectedStore] = useState<string>('')
+  const [bulkSyncing, setBulkSyncing] = useState(false)
+  const [showAuditModal, setShowAuditModal] = useState(false)
+  const [auditData, setAuditData] = useState<any>(null)
+  const [loadingAudit, setLoadingAudit] = useState(false)
+
+  const { user, isFullyAuthenticated } = useAuth()
+
+  useEffect(() => {
+    if (isFullyAuthenticated) {
+      console.log('Products: Making API call - fully authenticated')
+      fetchProducts()
+      fetchStores()
+    }
+  }, [isFullyAuthenticated])
+
+  const fetchProducts = async () => {
+    try {
+      setLoading(true)
+      const response = await axios.get('/api/products')
+      setProducts(response.data || [])
+    } catch (error: any) {
+      console.error('Error fetching products:', error)
+      toast.error('Failed to fetch products')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.name.endsWith('.csv')) {
+      toast.error('Please select a CSV file')
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('file', file)
+
+    try {
+      setUploading(true)
+      const response = await axios.post('/api/products/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+      
+      toast.success(`Successfully uploaded ${response.data.count} products`)
+      fetchProducts()
+      
+      // Reset file input
+      event.target.value = ''
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to upload CSV')
+      // Reset file input
+      event.target.value = ''
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const fetchStores = async () => {
+    try {
+      const response = await axios.get('/api/stores')
+      setStores(response.data.filter((store: any) => store.connected))
+    } catch (error) {
+      console.error('Failed to fetch stores:', error)
+    }
+  }
+
+  const handleSyncByStore = async () => {
+    if (!selectedStore) {
+      toast.error('Please select a store')
+      return
+    }
+
+    if (filteredProducts.length === 0) {
+      toast.error('No products to sync')
+      return
+    }
+
+    try {
+      setBulkSyncing(true)
+      let successCount = 0
+      let errorCount = 0
+
+      for (const product of filteredProducts) {
+        try {
+          await axios.post('/api/products/sync', {
+            productId: product.id,
+            storeId: selectedStore
+          })
+          successCount++
+        } catch (error) {
+          errorCount++
+          console.error(`Failed to sync product ${product.sku}:`, error)
+        }
+      }
+
+      toast.success(`Sync completed: ${successCount} successful, ${errorCount} failed`)
+      setShowStoreSelector(false)
+      setSelectedStore('')
+    } catch (error: any) {
+      toast.error('Failed to sync products')
+    } finally {
+      setBulkSyncing(false)
+    }
+  }
+
+  const handleSyncToAllStores = async () => {
+    if (stores.length === 0) {
+      toast.error('No connected stores found')
+      return
+    }
+
+    if (filteredProducts.length === 0) {
+      toast.error('No products to sync')
+      return
+    }
+
+    try {
+      setBulkSyncing(true)
+      let totalSuccess = 0
+      let totalErrors = 0
+
+      for (const product of filteredProducts) {
+        try {
+          const response = await axios.post('/api/products/sync', {
+            productId: product.id
+          })
+          if (response.data.success) {
+            totalSuccess += response.data.summary.successful
+            totalErrors += response.data.summary.failed
+          }
+        } catch (error) {
+          totalErrors++
+          console.error(`Failed to sync product ${product.sku}:`, error)
+        }
+      }
+
+      toast.success(`Bulk sync completed: ${totalSuccess} successful, ${totalErrors} failed across all stores`)
+    } catch (error: any) {
+      toast.error('Failed to sync products to all stores')
+    } finally {
+      setBulkSyncing(false)
+    }
+  }
+
+  const handleSelectProduct = (productId: number) => {
+    const productIdStr = productId.toString()
+    const newSelected = new Set(selectedProducts)
+    if (newSelected.has(productIdStr)) {
+      newSelected.delete(productIdStr)
+    } else {
+      newSelected.add(productIdStr)
+    }
+    setSelectedProducts(newSelected)
+  }
+
+  const handleSelectAll = () => {
+    if (selectedProducts.size === filteredProducts.length) {
+      setSelectedProducts(new Set())
+    } else {
+      setSelectedProducts(new Set(filteredProducts.map(p => p.id.toString())))
+    }
+  }
+
+  const handleSyncSelected = async () => {
+    if (selectedProducts.size === 0) {
+      toast.error('Please select products to sync')
+      return
+    }
+
+    setSyncing(true)
+    try {
+      const selectedSkus = products
+        .filter(p => selectedProducts.has(p.id.toString()))
+        .map(p => p.sku)
+
+      const response = await axios.post('/api/sync/multi', { skus: selectedSkus })
+      toast.success(`Successfully synced ${selectedProducts.size} products`)
+      setSelectedProducts(new Set())
+      
+      // Refresh sync status
+      if ((window as any).refreshSyncStatus) {
+        (window as any).refreshSyncStatus()
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to sync products')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const handleEditProduct = (product: Product) => {
+    setEditingProduct(product.id.toString())
+    setEditForm({
+      product_name: product.product_name,
+      category: product.category || '',
+      quantity: product.quantity.toString(),
+      description: product.description || '',
+      image_url: product.image_url || ''
+    })
+  }
+
+  const handleSaveEdit = async (productId: string) => {
+    if (!editForm.product_name || !editForm.quantity) {
+      toast.error('Product name and quantity are required')
+      return
+    }
+
+    try {
+      const response = await axios.post('/api/products/edit', {
+        id: parseInt(productId),
+        sku: products.find(p => p.id.toString() === productId)?.sku,
+        product_name: editForm.product_name,
+        category: editForm.category,
+        price: 1999, // Keep default price for backend compatibility
+        quantity: parseInt(editForm.quantity),
+        description: editForm.description,
+        image_url: editForm.image_url
+      })
+
+      toast.success('Product updated successfully!')
+      setEditingProduct(null)
+      fetchProducts() // Refresh the product list
+      
+      // Instantly refresh sync status
+      if ((window as any).refreshSyncStatus) {
+        (window as any).refreshSyncStatus()
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to update product')
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingProduct(null)
+    setEditForm({
+      product_name: '',
+      category: '',
+      quantity: '',
+      description: '',
+      image_url: ''
+    })
+  }
+
+  const handleDeleteProduct = async (product: Product) => {
+    // Double confirmation for delete action
+    const firstConfirm = window.confirm(
+      `⚠️ DELETE PRODUCT WARNING ⚠️\n\n` +
+      `Are you sure you want to delete this product?\n\n` +
+      `Product: ${product.product_name}\n` +
+      `SKU: ${product.sku}\n` +
+      `Quantity: ${product.quantity}\n\n` +
+      `This action cannot be undone!`
+    )
+
+    if (!firstConfirm) {
+      return // User cancelled
+    }
+
+    // Second confirmation
+    const secondConfirm = window.confirm(
+      `🚨 FINAL CONFIRMATION 🚨\n\n` +
+      `This is your LAST CHANCE to cancel!\n\n` +
+      `Clicking 'OK' will permanently delete:\n` +
+      `"${product.product_name}" (${product.sku})\n\n` +
+      `✅ I understand this product will be permanently deleted\n` +
+      `✅ I understand this action cannot be undone\n` +
+      `✅ I want to proceed with deletion\n\n` +
+      `Are you absolutely sure?`
+    )
+
+    if (!secondConfirm) {
+      return // User cancelled
+    }
+
+    try {
+      await axios.post('/api/products/delete', {
+        id: product.id
+      })
+      toast.success(`Product "${product.product_name}" deleted successfully!`)
+      fetchProducts() // Refresh the product list
+      
+      // Instantly refresh sync status
+      if ((window as any).refreshSyncStatus) {
+        (window as any).refreshSyncStatus()
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to delete product')
+    }
+  }
+
+  const handleEditInputChange = (field: string, value: string) => {
+    setEditForm(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
+  const handleSyncProduct = async (product: Product) => {
+    const confirm = window.confirm(
+      `🔄 SYNC PRODUCT TO ALL STORES\n\n` +
+      `Product: ${product.product_name}\n` +
+      `SKU: ${product.sku}\n` +
+      `Current Quantity: ${product.quantity}\n\n` +
+      `This will sync this product to all connected Shopify stores.\n\n` +
+      `Are you sure you want to continue?`
+    )
+
+    if (!confirm) {
+      return
+    }
+
+    try {
+      const response = await axios.post('/api/products/sync', {
+        productId: product.id,
+        sku: product.sku
+      })
+
+      if (response.data.success) {
+        toast.success(`✅ ${response.data.message}`)
+        
+        // Show detailed results
+        const results = response.data.results
+        const successStores = results.filter((r: any) => r.status === 'success')
+        const errorStores = results.filter((r: any) => r.status === 'error')
+        
+        if (successStores.length > 0) {
+          console.log('Successful syncs:', successStores)
+        }
+        if (errorStores.length > 0) {
+          console.log('Failed syncs:', errorStores)
+          toast.error(`Some syncs failed. Check console for details.`)
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to sync product')
+    }
+  }
+
+  const handleAuditProduct = async (product: Product) => {
+    try {
+      setLoadingAudit(true)
+      const response = await axios.post('/api/products/audit', {
+        productId: product.id,
+        sku: product.sku
+      })
+
+      if (response.data.success) {
+        setAuditData(response.data.audit)
+        setShowAuditModal(true)
+        toast.success('✅ Audit data retrieved successfully')
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to get audit data')
+    } finally {
+      setLoadingAudit(false)
+    }
+  }
+
+  // Filter products based on search term
+  const filteredProducts = products.filter(product =>
+    product.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (product.category && product.category.toLowerCase().includes(searchTerm.toLowerCase()))
+  )
+
+  // Pagination
+  const indexOfLastProduct = currentPage * productsPerPage
+  const indexOfFirstProduct = indexOfLastProduct - productsPerPage
+  const paginatedProducts = filteredProducts.slice(indexOfFirstProduct, indexOfLastProduct)
+  const totalPages = Math.ceil(filteredProducts.length / productsPerPage)
+
+  const paginate = (pageNumber: number) => setCurrentPage(pageNumber)
+
+  return (
+    <ProtectedRoute requiredPermission="viewProducts">
+      <Layout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Products</h1>
+            <p className="text-gray-600">Upload and manage your product inventory</p>
+          </div>
+          <button
+            onClick={fetchProducts}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
+
+        {/* Upload Section */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Upload Master CSV</h2>
+          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
+            <div className="text-center">
+              <Upload className="mx-auto h-12 w-12 text-gray-400" />
+              <div className="mt-4">
+                <label htmlFor="csv-upload" className="cursor-pointer">
+                  <span className="mt-2 block text-sm font-medium text-gray-900">
+                    Upload CSV file
+                  </span>
+                  <span className="mt-1 block text-sm text-gray-500">
+                    Supported formats: Product Name/Title, SKU/Variant SKU, Quantity/Variant Inventory Qty, Image/Image Src
+                  </span>
+                </label>
+                <input
+                  id="csv-upload"
+                  name="csv-upload"
+                  type="file"
+                  accept=".csv"
+                  className="sr-only"
+                  onChange={handleFileUpload}
+                  disabled={uploading}
+                />
+                <div className="mt-4">
+                  <button
+                    onClick={() => document.getElementById('csv-upload')?.click()}
+                    disabled={uploading}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {uploading ? (
+                      <>
+                        <RefreshCw className="animate-spin -ml-1 mr-2 h-4 w-4" />
+                        Uploading...
+                      </>
+                    ) : (
+                      'Choose File'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Search and Actions */}
+        <div className="bg-white rounded-lg shadow-sm border p-6">
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+            <div className="flex-1 max-w-md">
+              <input
+                type="text"
+                placeholder="Search products..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {selectedProducts.size > 0 && (
+                <button
+                  onClick={handleSyncSelected}
+                  disabled={syncing}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  {syncing ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Sync Selected ({selectedProducts.size})
+                </button>
+              )}
+              
+              {/* Sync By Store Button */}
+              <button
+                onClick={() => setShowStoreSelector(true)}
+                disabled={bulkSyncing || filteredProducts.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {bulkSyncing ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RotateCw className="h-4 w-4" />
+                )}
+                Sync By Store
+              </button>
+              
+              {/* Sync to All Stores Button */}
+              <button
+                onClick={handleSyncToAllStores}
+                disabled={bulkSyncing || filteredProducts.length === 0 || stores.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              >
+                {bulkSyncing ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Sync to All Stores
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Products Table */}
+        <div className="bg-white rounded-lg shadow-sm border">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium text-gray-900">
+                Product Inventory
+              </h3>
+              <span className="text-sm text-gray-500">
+                {filteredProducts.length} of {products.length} products
+              </span>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
+              <span className="ml-2 text-gray-600">Loading products...</span>
+            </div>
+          ) : filteredProducts.length === 0 ? (
+            <div className="text-center py-12">
+              <Package className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No products found</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {searchTerm ? 'Try adjusting your search terms.' : 'Get started by uploading a CSV file.'}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <button
+                          onClick={handleSelectAll}
+                          className="text-gray-400 hover:text-gray-600"
+                        >
+                          {selectedProducts.size === filteredProducts.length ? (
+                            <CheckSquare className="h-4 w-4" />
+                          ) : (
+                            <Square className="h-4 w-4" />
+                          )}
+                        </button>
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Product
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        SKU
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Category
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Image
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Quantity
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {paginatedProducts.map((product) => (
+                      <tr key={product.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <button
+                            onClick={() => handleSelectProduct(product.id)}
+                            className="text-gray-400 hover:text-gray-600"
+                          >
+                            {selectedProducts.has(product.id.toString()) ? (
+                              <CheckSquare className="h-4 w-4 text-blue-600" />
+                            ) : (
+                              <Square className="h-4 w-4" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="px-6 py-4">
+                          {editingProduct === product.id.toString() ? (
+                            <input
+                              type="text"
+                              value={editForm.product_name}
+                              onChange={(e) => handleEditInputChange('product_name', e.target.value)}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          ) : (
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{product.product_name}</div>
+                              {product.description && (
+                                <div className="text-sm text-gray-500 truncate max-w-48">{product.description}</div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="text-sm text-gray-900">{product.sku}</span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {editingProduct === product.id.toString() ? (
+                            <input
+                              type="text"
+                              value={editForm.category}
+                              onChange={(e) => handleEditInputChange('category', e.target.value)}
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          ) : (
+                            <span className="text-sm text-gray-900">{product.category || '-'}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {editingProduct === product.id.toString() ? (
+                            <input
+                              type="url"
+                              value={editForm.image_url}
+                              onChange={(e) => handleEditInputChange('image_url', e.target.value)}
+                              placeholder="Image URL"
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          ) : (
+                            <div className="flex items-center">
+                              {product.image_url ? (
+                                <img
+                                  src={product.image_url}
+                                  alt={product.product_name}
+                                  className="h-12 w-12 rounded-lg object-cover border border-gray-200"
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0yNCAzNkMzMC42Mjc0IDM2IDM2IDMwLjYyNzQgMzYgMjRDMzYgMTcuMzcyNiAzMC42Mjc0IDEyIDI0IDEyQzE3LjM3MjYgMTIgMTIgMTcuMzcyNiAxMiAyNEMxMiAzMC42Mjc0IDE3LjM3MjYgMzYgMjQgMzZaIiBzdHJva2U9IiM5Q0EzQUYiIHN0cm9rZS13aWR0aD0iMiIvPgo8cGF0aCBkPSJNMjQgMjhDMjYuMjA5MSAyOCAyOCAyNi4yMDkxIDI4IDI0QzI4IDIxLjc5MDkgMjYuMjA5MSAyMCAyNCAyMEMyMS43OTA5IDIwIDIwIDIxLjc5MDkgMjAgMjRDMjAgMjYuMjA5MSAyMS43OTA5IDI4IDI0IDI4WiIgZmlsbD0iIzlDQTNBRiIvPgo8L3N2Zz4K';
+                                    target.alt = 'No image';
+                                  }}
+                                />
+                              ) : (
+                                <div className="h-12 w-12 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                                  <Package className="h-6 w-6 text-gray-400" />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {editingProduct === product.id.toString() ? (
+                            <input
+                              type="number"
+                              value={editForm.quantity}
+                              onChange={(e) => handleEditInputChange('quantity', e.target.value)}
+                              min="0"
+                              className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          ) : (
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              product.quantity === 0 
+                                ? 'bg-red-100 text-red-800' 
+                                : product.quantity < 10 
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-green-100 text-green-800'
+                            }`}>
+                              {product.quantity}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {editingProduct === product.id.toString() ? (
+                              <>
+                                <button
+                                  onClick={() => handleSaveEdit(product.id.toString())}
+                                  className="text-green-600 hover:text-green-900 flex items-center gap-1"
+                                >
+                                  <Save className="h-4 w-4" />
+                                  Save
+                                </button>
+                                <button
+                                  onClick={handleCancelEdit}
+                                  className="text-gray-600 hover:text-gray-900 flex items-center gap-1"
+                                >
+                                  <X className="h-4 w-4" />
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => handleEditProduct(product)}
+                                  className="text-blue-600 hover:text-blue-900 flex items-center gap-1"
+                                  title="Edit product details"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteProduct(product)}
+                                  className="text-red-600 hover:text-red-900 flex items-center gap-1"
+                                  title="Delete product"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  Delete
+                                </button>
+                                <button
+                                  onClick={() => handleSyncProduct(product)}
+                                  className="text-green-600 hover:text-green-900 flex items-center gap-1"
+                                  title="Sync product to all stores"
+                                >
+                                  <RotateCw className="h-4 w-4" />
+                                  Sync
+                                </button>
+                                <button
+                                  onClick={() => handleAuditProduct(product)}
+                                  disabled={loadingAudit}
+                                  className="text-purple-600 hover:text-purple-900 flex items-center gap-1 disabled:opacity-50"
+                                  title="View product audit history"
+                                >
+                                  {loadingAudit ? (
+                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <FileText className="h-4 w-4" />
+                                  )}
+                                  Audit
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+                  <div className="flex-1 flex justify-between sm:hidden">
+                    <button
+                      onClick={() => paginate(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => paginate(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                      className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                  <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm text-gray-700">
+                        Showing <span className="font-medium">{indexOfFirstProduct + 1}</span> to{' '}
+                        <span className="font-medium">
+                          {Math.min(indexOfLastProduct, filteredProducts.length)}
+                        </span>{' '}
+                        of <span className="font-medium">{filteredProducts.length}</span> results
+                      </p>
+                    </div>
+                    <div>
+                      <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
+                        <button
+                          onClick={() => paginate(currentPage - 1)}
+                          disabled={currentPage === 1}
+                          className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          Previous
+                        </button>
+                        {(() => {
+                          const pages = []
+                          const maxVisiblePages = 7
+                          let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2))
+                          let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1)
+                          
+                          // Adjust start page if we're near the end
+                          if (endPage - startPage + 1 < maxVisiblePages) {
+                            startPage = Math.max(1, endPage - maxVisiblePages + 1)
+                          }
+                          
+                          // First page + ellipsis
+                          if (startPage > 1) {
+                            pages.push(
+                              <button
+                                key={1}
+                                onClick={() => paginate(1)}
+                                className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                              >
+                                1
+                              </button>
+                            )
+                            if (startPage > 2) {
+                              pages.push(
+                                <span key="start-ellipsis" className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                                  ...
+                                </span>
+                              )
+                            }
+                          }
+                          
+                          // Visible pages
+                          for (let i = startPage; i <= endPage; i++) {
+                            pages.push(
+                              <button
+                                key={i}
+                                onClick={() => paginate(i)}
+                                className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                                  currentPage === i
+                                    ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                                    : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                                }`}
+                              >
+                                {i}
+                              </button>
+                            )
+                          }
+                          
+                          // Last page + ellipsis
+                          if (endPage < totalPages) {
+                            if (endPage < totalPages - 1) {
+                              pages.push(
+                                <span key="end-ellipsis" className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                                  ...
+                                </span>
+                              )
+                            }
+                            pages.push(
+                              <button
+                                key={totalPages}
+                                onClick={() => paginate(totalPages)}
+                                className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+                              >
+                                {totalPages}
+                              </button>
+                            )
+                          }
+                          
+                          return pages
+                        })()}
+                        <button
+                          onClick={() => paginate(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                          className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          Next
+                        </button>
+                      </nav>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Store Selector Modal */}
+        {showStoreSelector && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Select Store to Sync</h3>
+                <button
+                  onClick={() => {
+                    setShowStoreSelector(false)
+                    setSelectedStore('')
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Choose Store ({filteredProducts.length} products will be synced)
+                  </label>
+                  <select
+                    value={selectedStore}
+                    onChange={(e) => setSelectedStore(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="">Select a store...</option>
+                    {stores.map((store) => (
+                      <option key={store.id} value={store.id}>
+                        {store.store_name} ({store.store_domain})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => {
+                      setShowStoreSelector(false)
+                      setSelectedStore('')
+                    }}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSyncByStore}
+                    disabled={!selectedStore || bulkSyncing}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {bulkSyncing ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        Syncing...
+                      </>
+                    ) : (
+                      <>
+                        <RotateCw className="h-4 w-4" />
+                        Start Sync
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Audit Modal */}
+        {showAuditModal && auditData && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">Product Audit Report</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {auditData.product.product_name} ({auditData.product.sku})
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowAuditModal(false)
+                    setAuditData(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                {/* Product Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="text-sm font-medium text-blue-600">Current Stock</div>
+                    <div className="text-2xl font-bold text-blue-900">{auditData.product.current_quantity}</div>
+                    <div className="text-xs text-blue-600">units</div>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <div className="text-sm font-medium text-green-600">Total Changes</div>
+                    <div className="text-2xl font-bold text-green-900">{auditData.summary.total_changes}</div>
+                    <div className="text-xs text-green-600">transactions</div>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <div className="text-sm font-medium text-purple-600">Total Scans</div>
+                    <div className="text-2xl font-bold text-purple-900">{auditData.summary.total_scans}</div>
+                    <div className="text-xs text-purple-600">scans</div>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg">
+                    <div className="text-sm font-medium text-orange-600">Net Change</div>
+                    <div className="text-2xl font-bold text-orange-900">
+                      {auditData.summary.quantity_trend.net_change > 0 ? '+' : ''}
+                      {auditData.summary.quantity_trend.net_change}
+                    </div>
+                    <div className="text-xs text-orange-600">units</div>
+                  </div>
+                </div>
+
+                {/* Changes Timeline */}
+                <div className="mb-6">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">📋 Changes Timeline</h4>
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {auditData.changes_timeline.length > 0 ? (
+                      auditData.changes_timeline.map((change: any, index: number) => (
+                        <div key={change.id} className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+                          <div className="flex-shrink-0">
+                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                              <span className="text-xs font-bold text-blue-600">{index + 1}</span>
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <h5 className="text-sm font-medium text-gray-900">{change.change_type}</h5>
+                              <span className="text-xs text-gray-500">{change.formatted_date}</span>
+                            </div>
+                            <p className="text-sm text-gray-600 mt-1">{change.description}</p>
+                            {change.notes && (
+                              <p className="text-xs text-gray-500 mt-1 italic">Notes: {change.notes}</p>
+                            )}
+                            <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                              <span>👤 {change.performed_by}</span>
+                              {change.user_email && <span>📧 {change.user_email}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        <FileText className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                        <p>No changes recorded yet</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Scan History */}
+                {auditData.scan_history.length > 0 && (
+                  <div>
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4">📱 Recent Scans</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {auditData.scan_history.slice(0, 6).map((scan: any) => (
+                        <div key={scan.id} className="bg-purple-50 p-3 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-purple-900">
+                              {scan.quantity} units
+                            </span>
+                            <span className="text-xs text-purple-600">
+                              {scan.formatted_date}
+                            </span>
+                          </div>
+                          <div className="text-xs text-purple-600 mt-1">
+                            Scan #{scan.scan_count} • Session: {scan.session_id?.slice(-8)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
+                <button
+                  onClick={() => {
+                    setShowAuditModal(false)
+                    setAuditData(null)
+                  }}
+                  className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    console.log('Full Audit Data:', auditData)
+                    toast.success('Audit data logged to console')
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Export to Console
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      </Layout>
+    </ProtectedRoute>
+  )
+}

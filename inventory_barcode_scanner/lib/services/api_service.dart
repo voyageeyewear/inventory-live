@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  static const String baseUrl = 'https://local-inventory-management-system-qidqhjmqq.vercel.app';
+  static const String baseUrl = 'https://local-inventory-management-system-b0kfk6cqb.vercel.app';
   
   // Get stored auth token
   Future<String?> getAuthToken() async {
@@ -277,6 +277,106 @@ class ApiService {
         'success': false,
         'message': 'Cannot reach server: ${e.toString()}',
       };
+    }
+  }
+
+  // Get mobile user activities
+  Future<Map<String, dynamic>> getMobileUserActivities(int mobileUserId) async {
+    try {
+      final token = await getAuthToken();
+      if (token == null) {
+        return {'success': false, 'message': 'No authentication token'};
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/mobile-activities?user_id=$mobileUserId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = json.decode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {'success': true, 'activities': data};
+      } else {
+        return {'success': false, 'message': data['message'] ?? 'Failed to fetch activities'};
+      }
+    } catch (e) {
+      print('Get activities error: $e');
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
+
+  // Submit mobile activity (new system)
+  Future<Map<String, dynamic>> submitMobileActivity({
+    required int productId,
+    required String barcode,
+    required String action,
+    required int quantity,
+    String? notes,
+  }) async {
+    try {
+      final token = await getAuthToken();
+      final userData = await getUserData();
+      
+      if (token == null || userData == null) {
+        return {'success': false, 'message': 'Authentication required'};
+      }
+
+      // Get device info
+      final deviceInfo = await _getDeviceInfo();
+      final ipAddress = await _getIpAddress();
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/mobile-activities'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({
+          'user_id': userData['id'],
+          'product_id': productId,
+          'barcode': barcode,
+          'action': action,
+          'quantity': quantity,
+          'notes': notes ?? '',
+          'device_info': deviceInfo,
+          'ip_address': ipAddress,
+        }),
+      );
+
+      final data = json.decode(response.body);
+      
+      if (response.statusCode == 201) {
+        return {'success': true, 'activity': data};
+      } else {
+        return {'success': false, 'message': data['message'] ?? 'Failed to submit activity'};
+      }
+    } catch (e) {
+      print('Submit activity error: $e');
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
+
+  // Helper method to get device info
+  Future<String> _getDeviceInfo() async {
+    try {
+      // You can use device_info_plus package for more detailed info
+      return 'Mobile Device'; // Simplified for now
+    } catch (e) {
+      return 'Unknown Device';
+    }
+  }
+
+  // Helper method to get IP address
+  Future<String> _getIpAddress() async {
+    try {
+      // You can implement IP detection here
+      return '0.0.0.0'; // Simplified for now
+    } catch (e) {
+      return 'Unknown IP';
     }
   }
 }

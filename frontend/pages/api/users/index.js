@@ -37,8 +37,6 @@ export default async function handler(req, res) {
       return res.status(403).json({ message: 'Admin access required' })
     }
     
-    const { db } = await connectToDatabase()
-
     switch (method) {
       case 'GET':
         try {

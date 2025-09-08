@@ -209,6 +209,13 @@ export default async function handler(req, res) {
             user.username
           ])
           
+          // Mark product as synced for this store
+          await query(`
+            UPDATE products 
+            SET last_synced = CURRENT_TIMESTAMP, needs_sync = false 
+            WHERE id = $1
+          `, [product.id])
+          
           successCount++
         } else {
           throw new Error(shopifyResponse.error || 'Unknown Shopify API error')
