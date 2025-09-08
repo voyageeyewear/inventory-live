@@ -88,10 +88,11 @@ export default function DataManagement() {
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<DatabaseStats | null>(null)
   const [health, setHealth] = useState<SystemHealth | null>(null)
-  const [activeTab, setActiveTab] = useState<'overview' | 'backup' | 'maintenance' | 'analytics'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'backup' | 'maintenance' | 'analytics' | 'reset'>('overview')
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [cleaning, setCleaning] = useState(false)
+  const [resetting, setResetting] = useState(false)
 
   useEffect(() => {
     if (isFullyAuthenticated) {
@@ -200,6 +201,98 @@ export default function DataManagement() {
     }
   }
 
+  const handleFullBackup = async () => {
+    setExporting(true)
+    try {
+      const response = await axios.get('/api/data-management/full-backup')
+      
+      if (response.data.success) {
+        const backupData = response.data.backup
+        const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `inventory_backup_${new Date().toISOString().split('T')[0]}_${Date.now()}.json`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+        
+        toast.success(`✅ Full backup created successfully (${backupData.metadata.total_records} records)`)
+      }
+    } catch (error: any) {
+      console.error('Backup error:', error)
+      toast.error('❌ Failed to create backup: ' + (error.response?.data?.message || error.message))
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleResetHistories = async (type: string) => {
+    const typeNames: { [key: string]: string } = {
+      'audit_history': 'Audit History',
+      'sync_history': 'Sync History', 
+      'scan_history': 'Scan History',
+      'mobile_activities': 'Mobile Activities',
+      'today_sync': "Today's Sync Data",
+      'all_histories': 'ALL History Data',
+      'sync_status': 'Product Sync Status'
+    }
+
+    const confirmMessage = `⚠️ RESET ${typeNames[type]?.toUpperCase()}\n\n` +
+      `This will permanently delete ${typeNames[type]?.toLowerCase()} from the database.\n` +
+      `This action CANNOT be undone!\n\n` +
+      `Are you absolutely sure you want to continue?`
+
+    if (!window.confirm(confirmMessage)) return
+
+    setResetting(true)
+    try {
+      const response = await axios.post('/api/data-management/reset-histories', { type })
+      
+      if (response.data.success) {
+        toast.success(`✅ ${response.data.message}`)
+        fetchData() // Refresh stats
+      }
+    } catch (error: any) {
+      console.error('Reset error:', error)
+      toast.error('❌ Failed to reset: ' + (error.response?.data?.message || error.message))
+    } finally {
+      setResetting(false)
+    }
+  }
+
+  const handleCleanupData = async (type: string, days: number = 30) => {
+    const typeNames: { [key: string]: string } = {
+      'old_logs': `Stock Logs (older than ${days} days)`,
+      'old_scans': `Scan Logs (older than ${days} days)`,
+      'old_mobile_activities': `Mobile Activities (older than ${days} days)`,
+      'inactive_products': `Inactive Products (older than ${days} days)`,
+      'optimize_database': 'Database Optimization'
+    }
+
+    const confirmMessage = `🧹 CLEANUP: ${typeNames[type]}\n\n` +
+      `This will permanently remove old data to optimize performance.\n` +
+      `Are you sure you want to continue?`
+
+    if (!window.confirm(confirmMessage)) return
+
+    setCleaning(true)
+    try {
+      const response = await axios.post('/api/data-management/cleanup-data', { type, days })
+      
+      if (response.data.success) {
+        toast.success(`✅ ${response.data.message}`)
+        fetchData() // Refresh stats
+      }
+    } catch (error: any) {
+      console.error('Cleanup error:', error)
+      toast.error('❌ Failed to cleanup: ' + (error.response?.data?.message || error.message))
+    } finally {
+      setCleaning(false)
+    }
+  }
+
   const handleExportData = async (type: 'products' | 'all') => {
     setExporting(true)
     try {
@@ -303,24 +396,6 @@ export default function DataManagement() {
     }
   }
 
-  const handleCleanupData = async (type: 'logs' | 'scans') => {
-    const confirmMessage = type === 'logs' 
-      ? `Delete old stock logs (older than 90 days)?`
-      : `Delete old scan logs (older than 30 days)?`
-    
-    if (!window.confirm(confirmMessage)) return
-
-    setCleaning(true)
-    try {
-      // This would need actual API endpoints
-      toast('Cleanup feature is coming soon', { icon: 'ℹ️' })
-    } catch (error: any) {
-      console.error('Cleanup error:', error)
-      toast.error('❌ Failed to cleanup data')
-    } finally {
-      setCleaning(false)
-    }
-  }
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat().format(num)
@@ -462,6 +537,7 @@ export default function DataManagement() {
                 { id: 'overview', name: 'Overview', icon: BarChart3 },
                 { id: 'backup', name: 'Backup & Export', icon: Download },
                 { id: 'maintenance', name: 'Maintenance', icon: Settings },
+                { id: 'reset', name: 'Reset & Cleanup', icon: Trash2 },
                 { id: 'analytics', name: 'Analytics', icon: TrendingUp }
               ].map((tab) => (
                 <button
@@ -680,12 +756,12 @@ export default function DataManagement() {
                     </div>
                   </div>
                   <button
-                    onClick={() => handleExportData('all')}
+                    onClick={handleFullBackup}
                     disabled={exporting}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400"
                   >
                     <Archive className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
-                    {exporting ? 'Creating Backup...' : 'Full Backup'}
+                    {exporting ? 'Creating Backup...' : 'Full System Backup'}
                   </button>
                 </div>
               </div>
@@ -751,12 +827,12 @@ export default function DataManagement() {
                     </div>
                   </div>
                   <button
-                    onClick={() => handleCleanupData('logs')}
+                    onClick={() => handleCleanupData('old_logs', 90)}
                     disabled={cleaning}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-400"
                   >
                     <Trash2 className={`h-4 w-4 ${cleaning ? 'animate-pulse' : ''}`} />
-                    {cleaning ? 'Cleaning...' : 'Clean Old Logs'}
+                    {cleaning ? 'Cleaning...' : 'Clean Old Logs (90+ days)'}
                   </button>
                 </div>
 
@@ -779,12 +855,12 @@ export default function DataManagement() {
                     </div>
                   </div>
                   <button
-                    onClick={() => handleCleanupData('scans')}
+                    onClick={() => handleCleanupData('old_scans', 30)}
                     disabled={cleaning}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400"
                   >
                     <Eye className={`h-4 w-4 ${cleaning ? 'animate-pulse' : ''}`} />
-                    {cleaning ? 'Cleaning...' : 'Clean Scan History'}
+                    {cleaning ? 'Cleaning...' : 'Clean Scan History (30+ days)'}
                   </button>
                 </div>
               </div>
@@ -838,6 +914,207 @@ export default function DataManagement() {
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'reset' && (
+            <div className="space-y-6">
+              {/* Admin Warning */}
+              {user?.role !== 'admin' && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-red-600" />
+                    <div>
+                      <h3 className="text-sm font-medium text-red-800">Admin Access Required</h3>
+                      <p className="text-sm text-red-700 mt-1">
+                        Reset and cleanup operations require administrator privileges.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* History Reset Options */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-lg shadow border">
+                  <div className="flex items-center mb-4">
+                    <FileText className="h-6 w-6 text-blue-600" />
+                    <h3 className="text-lg font-medium text-gray-900 ml-2">Audit History</h3>
+                  </div>
+                  <p className="text-gray-600 mb-4 text-sm">
+                    Reset all audit and stock movement logs. This will clear the complete history of product changes.
+                  </p>
+                  <div className="space-y-2 mb-4 text-sm text-gray-600">
+                    <div className="flex justify-between">
+                      <span>Total Records:</span>
+                      <span className="font-medium">{formatNumber(stats?.stockLogs.total || 0)}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleResetHistories('audit_history')}
+                    disabled={resetting || user?.role !== 'admin'}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+                  >
+                    <Trash2 className={`h-4 w-4 ${resetting ? 'animate-pulse' : ''}`} />
+                    {resetting ? 'Resetting...' : 'Reset Audit History'}
+                  </button>
+                </div>
+
+                <div className="bg-white p-6 rounded-lg shadow border">
+                  <div className="flex items-center mb-4">
+                    <RefreshCw className="h-6 w-6 text-green-600" />
+                    <h3 className="text-lg font-medium text-gray-900 ml-2">Sync History</h3>
+                  </div>
+                  <p className="text-gray-600 mb-4 text-sm">
+                    Reset all synchronization history and logs. This will clear sync records with external stores.
+                  </p>
+                  <div className="space-y-2 mb-4 text-sm text-gray-600">
+                    <div className="flex justify-between">
+                      <span>Sync Records:</span>
+                      <span className="font-medium">
+                        {formatNumber(stats?.stockLogs.total ? Math.floor(stats.stockLogs.total * 0.3) : 0)}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleResetHistories('sync_history')}
+                    disabled={resetting || user?.role !== 'admin'}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${resetting ? 'animate-pulse' : ''}`} />
+                    {resetting ? 'Resetting...' : 'Reset Sync History'}
+                  </button>
+                </div>
+
+                <div className="bg-white p-6 rounded-lg shadow border">
+                  <div className="flex items-center mb-4">
+                    <Eye className="h-6 w-6 text-purple-600" />
+                    <h3 className="text-lg font-medium text-gray-900 ml-2">Scan History</h3>
+                  </div>
+                  <p className="text-gray-600 mb-4 text-sm">
+                    Reset all barcode scan records and history. This will clear mobile app scan logs.
+                  </p>
+                  <div className="space-y-2 mb-4 text-sm text-gray-600">
+                    <div className="flex justify-between">
+                      <span>Scan Records:</span>
+                      <span className="font-medium">{formatNumber(stats?.scanLogs.total || 0)}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleResetHistories('scan_history')}
+                    disabled={resetting || user?.role !== 'admin'}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400"
+                  >
+                    <Eye className={`h-4 w-4 ${resetting ? 'animate-pulse' : ''}`} />
+                    {resetting ? 'Resetting...' : 'Reset Scan History'}
+                  </button>
+                </div>
+
+                <div className="bg-white p-6 rounded-lg shadow border">
+                  <div className="flex items-center mb-4">
+                    <Users className="h-6 w-6 text-orange-600" />
+                    <h3 className="text-lg font-medium text-gray-900 ml-2">Mobile Activities</h3>
+                  </div>
+                  <p className="text-gray-600 mb-4 text-sm">
+                    Reset all mobile user activities and transaction history from mobile apps.
+                  </p>
+                  <div className="space-y-2 mb-4 text-sm text-gray-600">
+                    <div className="flex justify-between">
+                      <span>Mobile Records:</span>
+                      <span className="font-medium">{formatNumber(stats?.mobileTransactions.total || 0)}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleResetHistories('mobile_activities')}
+                    disabled={resetting || user?.role !== 'admin'}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-400"
+                  >
+                    <Users className={`h-4 w-4 ${resetting ? 'animate-pulse' : ''}`} />
+                    {resetting ? 'Resetting...' : 'Reset Mobile Activities'}
+                  </button>
+                </div>
+
+                <div className="bg-white p-6 rounded-lg shadow border">
+                  <div className="flex items-center mb-4">
+                    <Clock className="h-6 w-6 text-yellow-600" />
+                    <h3 className="text-lg font-medium text-gray-900 ml-2">Today's Sync</h3>
+                  </div>
+                  <p className="text-gray-600 mb-4 text-sm">
+                    Reset only today's synchronization data and logs. Useful for clearing daily sync issues.
+                  </p>
+                  <div className="space-y-2 mb-4 text-sm text-gray-600">
+                    <div className="flex justify-between">
+                      <span>Today's Syncs:</span>
+                      <span className="font-medium">
+                        {formatNumber(stats?.stockLogs.last7Days ? Math.floor(stats.stockLogs.last7Days * 0.2) : 0)}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleResetHistories('today_sync')}
+                    disabled={resetting || user?.role !== 'admin'}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 disabled:bg-gray-400"
+                  >
+                    <Clock className={`h-4 w-4 ${resetting ? 'animate-pulse' : ''}`} />
+                    {resetting ? 'Resetting...' : "Reset Today's Sync"}
+                  </button>
+                </div>
+
+                <div className="bg-white p-6 rounded-lg shadow border">
+                  <div className="flex items-center mb-4">
+                    <Settings className="h-6 w-6 text-indigo-600" />
+                    <h3 className="text-lg font-medium text-gray-900 ml-2">Sync Status</h3>
+                  </div>
+                  <p className="text-gray-600 mb-4 text-sm">
+                    Reset product sync status flags. This will mark all products as "up to date" and clear sync needs.
+                  </p>
+                  <div className="space-y-2 mb-4 text-sm text-gray-600">
+                    <div className="flex justify-between">
+                      <span>Products:</span>
+                      <span className="font-medium">{formatNumber(stats?.products.total || 0)}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleResetHistories('sync_status')}
+                    disabled={resetting || user?.role !== 'admin'}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-400"
+                  >
+                    <Settings className={`h-4 w-4 ${resetting ? 'animate-pulse' : ''}`} />
+                    {resetting ? 'Resetting...' : 'Reset Sync Status'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Danger Zone */}
+              <div className="bg-red-50 border-2 border-red-200 rounded-lg p-6">
+                <div className="flex items-center mb-4">
+                  <AlertTriangle className="h-6 w-6 text-red-600" />
+                  <h3 className="text-lg font-medium text-red-800 ml-2">⚠️ Danger Zone</h3>
+                </div>
+                <p className="text-red-700 mb-6">
+                  These operations will permanently delete ALL history data. This action cannot be undone!
+                </p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <button
+                    onClick={() => handleResetHistories('all_histories')}
+                    disabled={resetting || user?.role !== 'admin'}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 font-medium"
+                  >
+                    <Trash2 className={`h-5 w-5 ${resetting ? 'animate-pulse' : ''}`} />
+                    {resetting ? 'Resetting...' : 'RESET ALL HISTORIES'}
+                  </button>
+                  
+                  <button
+                    onClick={() => handleCleanupData('optimize_database')}
+                    disabled={cleaning || user?.role !== 'admin'}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:bg-gray-400 font-medium"
+                  >
+                    <HardDrive className={`h-5 w-5 ${cleaning ? 'animate-pulse' : ''}`} />
+                    {cleaning ? 'Optimizing...' : 'Optimize Database'}
+                  </button>
                 </div>
               </div>
             </div>

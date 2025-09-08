@@ -51,7 +51,8 @@ export default async function handler(req, res) {
     const result = await query(`
       UPDATE products 
       SET sku = $1, product_name = $2, category = $3, price = $4, quantity = $5, 
-          description = $6, image_url = $7, updated_at = CURRENT_TIMESTAMP
+          description = $6, image_url = $7, updated_at = CURRENT_TIMESTAMP,
+          needs_sync = true, last_modified = CURRENT_TIMESTAMP
       WHERE id = $8 AND is_active = true
       RETURNING *
     `, [sku, product_name, category, price, quantity, description, image_url, id])

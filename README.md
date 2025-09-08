@@ -24,7 +24,7 @@ A comprehensive full-stack inventory management system with barcode scanning cap
 ## 🚀 Live Demo
 
 ### 🌐 Web Dashboard
-**URL**: https://local-inventory-management-system-840xkd39r.vercel.app
+**URL**: https://local-inventory-management-system-aghrkpsz1.vercel.app
 
 **Demo Credentials**:
 - **Username**: `admin`

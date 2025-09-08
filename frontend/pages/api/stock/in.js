@@ -84,7 +84,7 @@ export default async function handler(req, res) {
       const newQuantity = (product.quantity || 0) + parseInt(quantity)
       
       await query(
-        'UPDATE products SET quantity = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+        'UPDATE products SET quantity = $1, updated_at = CURRENT_TIMESTAMP, needs_sync = true, last_modified = CURRENT_TIMESTAMP WHERE id = $2',
         [newQuantity, product.id]
       )
 

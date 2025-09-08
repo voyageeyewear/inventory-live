@@ -94,8 +94,69 @@ export default function ProductsEnhanced() {
   const [auditData, setAuditData] = useState<any>(null)
   const [loadingAudit, setLoadingAudit] = useState(false)
   const [showOnlyModified, setShowOnlyModified] = useState(false)
+  
+  // Debug panel state
+  const [showDebugPanel, setShowDebugPanel] = useState(false)
+  const [debugResults, setDebugResults] = useState<any>(null)
+  const [debugLoading, setDebugLoading] = useState(false)
 
   const { user, isFullyAuthenticated } = useAuth()
+
+  // Debug functions
+  const runDebugCommand = async (commandName: string, apiCall: () => Promise<any>) => {
+    setDebugLoading(true)
+    try {
+      const result = await apiCall()
+      setDebugResults((prev: any) => ({
+        ...prev,
+        [commandName]: result
+      }))
+      toast.success(`✅ ${commandName} completed`)
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.message || error.message
+      setDebugResults((prev: any) => ({
+        ...prev,
+        [commandName]: { error: errorMsg }
+      }))
+      toast.error(`❌ ${commandName} failed: ${errorMsg}`)
+    } finally {
+      setDebugLoading(false)
+    }
+  }
+
+  const checkDatabaseSchema = () => {
+    runDebugCommand('Database Schema Check', async () => {
+      const response = await axios.get('/api/debug/database-schema')
+      return response.data
+    })
+  }
+
+  const fixDatabaseSchema = () => {
+    runDebugCommand('Fix Database Schema', async () => {
+      const response = await axios.post('/api/products/add-sync-columns')
+      return response.data
+    })
+  }
+
+  const markSKUForSync = () => {
+    runDebugCommand('Mark SKU for Sync', async () => {
+      const response = await axios.post('/api/products/mark-sku-needs-sync', {
+        sku: '5G238FMG7385-C1'
+      })
+      return response.data
+    })
+  }
+
+  const verifySync = () => {
+    runDebugCommand('Verify Sync Status', async () => {
+      const response = await axios.get('/api/products/needs-sync')
+      return response.data
+    })
+  }
+
+  const refreshPage = () => {
+    window.location.reload()
+  }
 
   // Add missing functions for product management
   const handleSelectProduct = (productId: number) => {
@@ -465,7 +526,8 @@ export default function ProductsEnhanced() {
       let errorCount = 0
       const errors: string[] = []
 
-      for (const product of productsToSync) {
+      // Process all products concurrently for faster sync
+      const syncPromises = productsToSync.map(async (product) => {
         try {
           const response = await axios.post('/api/products/sync', {
             productId: product.id,
@@ -473,18 +535,33 @@ export default function ProductsEnhanced() {
           })
           
           if (response.data.success) {
+            return { success: true, product: product.sku }
+          } else {
+            return { success: false, product: product.sku, error: response.data.message || 'Unknown error' }
+          }
+        } catch (error: any) {
+          const errorMsg = error.response?.data?.message || error.message || 'Unknown error'
+          console.error(`Failed to sync product ${product.sku}:`, error)
+          return { success: false, product: product.sku, error: errorMsg }
+        }
+      })
+
+      // Wait for all sync operations to complete
+      const results = await Promise.allSettled(syncPromises)
+      
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          if (result.value.success) {
             successCount++
           } else {
             errorCount++
-            errors.push(`${product.sku}: ${response.data.message || 'Unknown error'}`)
+            errors.push(`${result.value.product}: ${result.value.error}`)
           }
-        } catch (error: any) {
+        } else {
           errorCount++
-          const errorMsg = error.response?.data?.message || error.message || 'Unknown error'
-          errors.push(`${product.sku}: ${errorMsg}`)
-          console.error(`Failed to sync product ${product.sku}:`, error)
+          errors.push(`Sync failed: ${result.reason}`)
         }
-      }
+      })
 
       // Show detailed results
       if (successCount > 0 && errorCount === 0) {
@@ -550,7 +627,8 @@ export default function ProductsEnhanced() {
       let totalErrors = 0
       const storeResults: any[] = []
 
-      for (const product of productsToSync) {
+      // Process all products concurrently for faster sync
+      const syncPromises = productsToSync.map(async (product) => {
         try {
           const response = await axios.post('/api/products/sync', {
             productId: product.id
@@ -558,21 +636,48 @@ export default function ProductsEnhanced() {
           })
           
           if (response.data.success && response.data.summary) {
-            totalSuccess += response.data.summary.successful
-            totalErrors += response.data.summary.failed
-            
-            // Track per-store results
-            if (response.data.results) {
-              storeResults.push(...response.data.results)
+            return {
+              success: true,
+              product: product.sku,
+              successful: response.data.summary.successful,
+              failed: response.data.summary.failed,
+              results: response.data.results || []
             }
           } else {
-            totalErrors++
+            return {
+              success: false,
+              product: product.sku,
+              successful: 0,
+              failed: 1,
+              results: []
+            }
           }
         } catch (error: any) {
-          totalErrors++
           console.error(`Failed to sync product ${product.sku}:`, error)
+          return {
+            success: false,
+            product: product.sku,
+            successful: 0,
+            failed: 1,
+            results: []
+          }
         }
-      }
+      })
+
+      // Wait for all sync operations to complete
+      const results = await Promise.allSettled(syncPromises)
+      
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          totalSuccess += result.value.successful
+          totalErrors += result.value.failed
+          if (result.value.results) {
+            storeResults.push(...result.value.results)
+          }
+        } else {
+          totalErrors++
+        }
+      })
 
       // Show comprehensive results
       if (totalSuccess > 0 && totalErrors === 0) {
@@ -602,6 +707,18 @@ export default function ProductsEnhanced() {
     product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (product.category && product.category.toLowerCase().includes(searchTerm.toLowerCase()))
   )
+
+  // Debug logging
+  useEffect(() => {
+    console.log('🔍 Sync Debug Info:', {
+      showOnlyModified,
+      totalProducts: products.length,
+      productsNeedingSync: productsNeedingSync.length,
+      baseProducts: baseProducts.length,
+      filteredProducts: filteredProducts.length,
+      syncStats
+    })
+  }, [showOnlyModified, products.length, productsNeedingSync.length, baseProducts.length, filteredProducts.length])
 
   // Pagination
   const indexOfLastProduct = currentPage * productsPerPage
@@ -637,18 +754,107 @@ export default function ProductsEnhanced() {
               <h1 className="text-2xl font-bold text-gray-900">Products</h1>
               <p className="text-gray-600">Manage your product inventory and sync with stores</p>
             </div>
-            <button
-              onClick={() => {
-                fetchProducts()
-                fetchDashboardStats()
-              }}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDebugPanel(!showDebugPanel)}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+              >
+                <Zap className="h-4 w-4" />
+                Debug Sync
+              </button>
+              <button
+                onClick={() => {
+                  fetchProducts()
+                  fetchDashboardStats()
+                }}
+                disabled={loading}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            </div>
           </div>
+
+          {/* Debug Panel */}
+          {showDebugPanel && (
+            <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-yellow-800">🔧 Sync Debug Panel</h2>
+                <button
+                  onClick={() => setShowDebugPanel(false)}
+                  className="text-yellow-600 hover:text-yellow-800"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
+                <button
+                  onClick={checkDatabaseSchema}
+                  disabled={debugLoading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  1. Check Schema
+                </button>
+                <button
+                  onClick={fixDatabaseSchema}
+                  disabled={debugLoading}
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                >
+                  2. Fix Schema
+                </button>
+                <button
+                  onClick={markSKUForSync}
+                  disabled={debugLoading}
+                  className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50"
+                >
+                  3. Mark SKU
+                </button>
+                <button
+                  onClick={verifySync}
+                  disabled={debugLoading}
+                  className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+                >
+                  4. Verify
+                </button>
+                <button
+                  onClick={refreshPage}
+                  disabled={debugLoading}
+                  className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50"
+                >
+                  5. Refresh
+                </button>
+              </div>
+
+              {debugLoading && (
+                <div className="flex items-center gap-2 text-blue-600 mb-4">
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  Running debug command...
+                </div>
+              )}
+
+              {debugResults && (
+                <div className="bg-white rounded border p-4 max-h-96 overflow-y-auto">
+                  <h3 className="font-semibold mb-2">Debug Results:</h3>
+                  <pre className="text-sm bg-gray-100 p-3 rounded overflow-x-auto">
+                    {JSON.stringify(debugResults, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              <div className="mt-4 text-sm text-yellow-700">
+                <p><strong>Instructions:</strong></p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Click "1. Check Schema" to see database structure</li>
+                  <li>Click "2. Fix Schema" to add missing columns and reset sync status</li>
+                  <li>Click "3. Mark SKU" to mark only your modified SKU (5G238FMG7385-C1)</li>
+                  <li>Click "4. Verify" to check how many products need sync (should be 1)</li>
+                  <li>Click "5. Refresh" to reload the page and test sync functionality</li>
+                </ol>
+              </div>
+            </div>
+          )}
 
           {/* Dashboard Stats */}
           {stats && (
