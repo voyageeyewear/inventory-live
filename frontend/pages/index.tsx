@@ -259,7 +259,7 @@ export default function ProductsEnhanced() {
       })
 
       if (response.data.success) {
-        setAuditData(response.data.audit)
+        setAuditData(response.data.audit.changes_timeline)
         setShowAuditModal(true)
       }
     } catch (error: any) {
@@ -339,15 +339,17 @@ export default function ProductsEnhanced() {
   const fetchDashboardStats = async () => {
     try {
       // Fetch comprehensive dashboard statistics
-      const [productsRes, storesRes, stockLogsRes] = await Promise.all([
+      const [productsRes, storesRes, stockLogsRes, syncStatsRes] = await Promise.all([
         axios.get('/api/products'),
         axios.get('/api/stores'),
-        axios.get('/api/stock-logs?limit=10')
+        axios.get('/api/stock-logs?limit=10'),
+        axios.get('/api/dashboard/sync-stats').catch(() => ({ data: { today: { total_syncs: 0, stock_changes: 0 } } }))
       ])
 
       const allProducts = productsRes.data || []
       const allStores = storesRes.data || []
       const recentLogs = stockLogsRes.data.stockLogs || []
+      const syncStats = syncStatsRes.data || { today: { total_syncs: 0, stock_changes: 0 } }
 
       // Calculate statistics
       const activeProducts = allProducts.filter((p: Product) => p.is_active).length
@@ -355,21 +357,15 @@ export default function ProductsEnhanced() {
       const connectedStores = allStores.filter((s: any) => s.connected).length
       const lowStockItems = allProducts.filter((p: Product) => p.quantity < 10).length
       
-      // Calculate total inventory value (assuming average price of $10 if no price)
+      // Calculate total inventory value (assuming average price of ₹10 if no price)
       const totalValue = allProducts.reduce((sum: number, p: Product) => {
         const price = parseFloat(p.price) || 10
         return sum + (price * p.quantity)
       }, 0)
 
-      // Get today's activities
-      const today = new Date().toISOString().split('T')[0]
-      const todaysSyncs = recentLogs.filter((log: any) => 
-        log.created_at.startsWith(today) && log.type === 'sync'
-      ).length
-
-      const stockChanges = recentLogs.filter((log: any) => 
-        log.created_at.startsWith(today) && ['stock_in', 'stock_out'].includes(log.type)
-      ).length
+      // Use API data for today's activities (more accurate)
+      const todaysSyncs = syncStats.today?.total_syncs || 0
+      const stockChanges = syncStats.today?.stock_changes || 0
 
       // Sync statistics
       const syncLogs = recentLogs.filter((log: any) => log.type === 'sync')
@@ -438,17 +434,12 @@ export default function ProductsEnhanced() {
       return
     }
 
-    // Get products that need syncing
-    const productsToSync = showOnlyModified ? productsNeedingSync : filteredProducts
+    // Always sync only modified products to save time
+    const productsToSync = productsNeedingSync
     
     if (productsToSync.length === 0) {
-      if (showOnlyModified) {
-        toast.success('🎉 All products are already up to date! No sync needed.')
-        return
-      } else {
-        toast.error('No products available to sync')
-        return
-      }
+      toast.success('🎉 All products are already up to date! No sync needed.')
+      return
     }
 
     // Enhanced confirmation dialog
@@ -458,13 +449,10 @@ export default function ProductsEnhanced() {
     
     const confirmMessage = `🔄 SYNC TO SPECIFIC STORE\n\n` +
       `Store: ${storeInfo?.store_name || 'Unknown'}\n` +
-      `Products to sync: ${productsToSync.length}\n` +
-      `${showOnlyModified ? 
-        `(Only modified products - saves time!)\n` +
-        `Modified: ${modifiedCount} | Up to date: ${totalCount - modifiedCount}` :
-        `(All products - may take longer)`
-      }\n\n` +
-      `This will update inventory levels in the selected Shopify store.\n\n` +
+      `Products to sync: ${productsToSync.length} (modified products only)\n` +
+      `Modified: ${modifiedCount} | Up to date: ${totalCount - modifiedCount}\n\n` +
+      `This will update inventory levels in the selected Shopify store.\n` +
+      `✅ Smart sync enabled - only syncing products that need updates!\n\n` +
       `Are you sure you want to continue?`
 
     if (!window.confirm(confirmMessage)) {
@@ -529,17 +517,12 @@ export default function ProductsEnhanced() {
       return
     }
 
-    // Get products that need syncing
-    const productsToSync = showOnlyModified ? productsNeedingSync : filteredProducts
+    // Always sync only modified products to save time
+    const productsToSync = productsNeedingSync
     
     if (productsToSync.length === 0) {
-      if (showOnlyModified) {
-        toast.success('🎉 All products are already up to date! No sync needed.')
-        return
-      } else {
-        toast.error('No products available to sync')
-        return
-      }
+      toast.success('🎉 All products are already up to date! No sync needed.')
+      return
     }
 
     // Enhanced confirmation dialog
@@ -549,18 +532,12 @@ export default function ProductsEnhanced() {
     
     const confirmMessage = `🚀 SYNC TO ALL STORES\n\n` +
       `Connected stores: ${stores.length}\n` +
-      `Products to sync: ${productsToSync.length}\n` +
-      `${showOnlyModified ? 
-        `(Only modified products - saves time!)\n` +
-        `Modified: ${modifiedCount} | Up to date: ${totalCount - modifiedCount}\n` :
-        `(All products - may take longer)\n`
-      }` +
+      `Products to sync: ${productsToSync.length} (modified products only)\n` +
+      `Modified: ${modifiedCount} | Up to date: ${totalCount - modifiedCount}\n` +
       `Total operations: ${totalOperations}\n\n` +
       `This will update inventory levels across all connected Shopify stores.\n` +
-      `${showOnlyModified ? 
-        `Estimated time: ${Math.ceil(totalOperations / 10)} seconds` :
-        `This process may take several minutes.`
-      }\n\n` +
+      `✅ Smart sync enabled - only syncing products that need updates!\n` +
+      `Estimated time: ${Math.ceil(totalOperations / 10)} seconds\n\n` +
       `Are you sure you want to continue?`
 
     if (!window.confirm(confirmMessage)) {
@@ -633,9 +610,9 @@ export default function ProductsEnhanced() {
   const totalPages = Math.ceil(filteredProducts.length / productsPerPage)
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'INR'
     }).format(value)
   }
 
@@ -1249,16 +1226,21 @@ export default function ProductsEnhanced() {
                         <div key={index} className="border-l-4 border-blue-500 pl-4 py-2">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-medium text-gray-900">
-                              {audit.action}
+                              {audit.change_type}
                             </span>
                             <span className="text-xs text-gray-500">
-                              {formatRelativeTime(audit.created_at)}
+                              {formatRelativeTime(audit.timestamp)}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-600 mt-1">{audit.details}</p>
-                          {audit.user && (
+                          <p className="text-sm text-gray-600 mt-1">{audit.description}</p>
+                          {audit.notes && (
+                            <p className="text-xs text-gray-500 mt-1 italic">
+                              Note: {audit.notes}
+                            </p>
+                          )}
+                          {audit.performed_by && (
                             <p className="text-xs text-gray-500 mt-1">
-                              by {audit.user}
+                              by {audit.performed_by}
                             </p>
                           )}
                         </div>
