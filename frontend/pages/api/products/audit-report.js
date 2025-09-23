@@ -39,7 +39,7 @@ export default async function handler(req, res) {
       LIMIT 50
     `, [productId])
 
-    // Get quantity change history
+    // Get quantity change history with detailed CSV information
     const quantityHistoryResult = await query(`
       SELECT 
         id, type, quantity, notes, user_name, created_at,
@@ -47,11 +47,56 @@ export default async function handler(req, res) {
           WHEN type = 'stock_in' THEN 'increase'
           WHEN type = 'stock_out' THEN 'decrease'
           ELSE 'other'
-        END as change_type
+        END as change_type,
+        CASE 
+          WHEN notes LIKE '%CSV%' OR notes LIKE '%csv%' OR notes LIKE '%bulk%' THEN true
+          ELSE false
+        END as is_csv_upload,
+        CASE 
+          WHEN notes LIKE '%CSV%' OR notes LIKE '%csv%' THEN 
+            COALESCE(
+              SUBSTRING(notes FROM 'CSV: ([^,)]+)'),
+              SUBSTRING(notes FROM 'csv: ([^,)]+)'),
+              SUBSTRING(notes FROM 'file: ([^,)]+)'),
+              'Unknown CSV File'
+            )
+          ELSE NULL
+        END as csv_filename,
+        CASE 
+          WHEN notes LIKE '%CSV%' OR notes LIKE '%csv%' THEN 
+            COALESCE(
+              SUBSTRING(notes FROM 'uploaded by ([^,)]+)'),
+              SUBSTRING(notes FROM 'by ([^,)]+)'),
+              user_name
+            )
+          ELSE user_name
+        END as performed_by,
+        CASE 
+          WHEN notes LIKE '%CSV%' OR notes LIKE '%csv%' THEN 
+            COALESCE(
+              SUBSTRING(notes FROM 'row ([0-9]+)'),
+              SUBSTRING(notes FROM 'line ([0-9]+)'),
+              NULL
+            )
+          ELSE NULL
+        END as csv_row_number,
+        CASE 
+          WHEN notes LIKE '%consolidated%' OR notes LIKE '%duplicate%' THEN true
+          ELSE false
+        END as is_consolidated,
+        CASE 
+          WHEN notes LIKE '%consolidated%' OR notes LIKE '%duplicate%' THEN 
+            COALESCE(
+              SUBSTRING(notes FROM '([0-9]+) duplicates'),
+              SUBSTRING(notes FROM '([0-9]+) entries'),
+              'Multiple'
+            )
+          ELSE NULL
+        END as consolidation_count
       FROM stock_logs 
-      WHERE product_id = $1 AND type IN ('stock_in', 'stock_out', 'adjustment')
+      WHERE product_id = $1 AND type IN ('stock_in', 'stock_out', 'adjustment', 'bulk_in', 'bulk_out')
       ORDER BY created_at DESC
-      LIMIT 50
+      LIMIT 100
     `, [productId])
 
     // Get scan history from scan_logs (check if table exists first)
@@ -111,6 +156,113 @@ export default async function handler(req, res) {
       mobileActivityResult = { rows: [] }
     }
 
+    // Get CSV upload sessions and batch information
+    const csvSessionsResult = await query(`
+      SELECT 
+        DATE(created_at) as upload_date,
+        DATE_TRUNC('hour', created_at) as upload_hour,
+        user_name,
+        type as upload_type,
+        COUNT(*) as total_changes,
+        SUM(CASE WHEN type = 'stock_in' OR type = 'bulk_in' THEN quantity ELSE 0 END) as total_stock_in,
+        SUM(CASE WHEN type = 'stock_out' OR type = 'bulk_out' THEN quantity ELSE 0 END) as total_stock_out,
+        MIN(created_at) as session_start,
+        MAX(created_at) as session_end,
+        CASE 
+          WHEN notes LIKE '%CSV%' OR notes LIKE '%csv%' THEN 
+            COALESCE(
+              SUBSTRING(notes FROM 'CSV: ([^,)]+)'),
+              SUBSTRING(notes FROM 'csv: ([^,)]+)'),
+              SUBSTRING(notes FROM 'file: ([^,)]+)'),
+              'Unknown CSV File'
+            )
+          ELSE NULL
+        END as csv_filename,
+        CASE 
+          WHEN notes LIKE '%consolidated%' OR notes LIKE '%duplicate%' THEN true
+          ELSE false
+        END as has_consolidation
+      FROM stock_logs 
+      WHERE product_id = $1 
+        AND (type IN ('bulk_in', 'bulk_out') OR notes LIKE '%CSV%' OR notes LIKE '%csv%')
+      GROUP BY DATE(created_at), DATE_TRUNC('hour', created_at), user_name, type, 
+               CASE WHEN notes LIKE '%CSV%' OR notes LIKE '%csv%' THEN 
+                 COALESCE(SUBSTRING(notes FROM 'CSV: ([^,)]+)'), SUBSTRING(notes FROM 'csv: ([^,)]+)'), SUBSTRING(notes FROM 'file: ([^,)]+)'), 'Unknown CSV File')
+               ELSE NULL END,
+               CASE WHEN notes LIKE '%consolidated%' OR notes LIKE '%duplicate%' THEN true ELSE false END
+      ORDER BY session_start DESC
+      LIMIT 20
+    `, [productId])
+
+    // Get detailed audit timeline with enhanced information
+    const auditTimelineResult = await query(`
+      SELECT 
+        id, type, quantity, notes, user_name, created_at,
+        CASE 
+          WHEN type = 'sync' THEN 'sync'
+          WHEN type IN ('stock_in', 'bulk_in') THEN 'stock_in'
+          WHEN type IN ('stock_out', 'bulk_out') THEN 'stock_out'
+          WHEN type = 'adjustment' THEN 'adjustment'
+          ELSE 'other'
+        END as event_type,
+        CASE 
+          WHEN type = 'sync' THEN 
+            CASE 
+              WHEN notes LIKE '%FAILED%' OR notes LIKE '%ERROR%' THEN 'failed'
+              WHEN notes LIKE '%SUCCESS%' THEN 'success'
+              ELSE 'unknown'
+            END
+          ELSE NULL
+        END as sync_status,
+        CASE 
+          WHEN notes LIKE '%CSV%' OR notes LIKE '%csv%' OR notes LIKE '%bulk%' THEN true
+          ELSE false
+        END as is_bulk_operation,
+        CASE 
+          WHEN notes LIKE '%CSV%' OR notes LIKE '%csv%' THEN 
+            COALESCE(
+              SUBSTRING(notes FROM 'CSV: ([^,)]+)'),
+              SUBSTRING(notes FROM 'csv: ([^,)]+)'),
+              SUBSTRING(notes FROM 'file: ([^,)]+)'),
+              'Unknown CSV File'
+            )
+          ELSE NULL
+        END as csv_filename,
+        CASE 
+          WHEN notes LIKE '%consolidated%' OR notes LIKE '%duplicate%' THEN true
+          ELSE false
+        END as is_consolidated,
+        CASE 
+          WHEN notes LIKE '%consolidated%' OR notes LIKE '%duplicate%' THEN 
+            COALESCE(
+              SUBSTRING(notes FROM '([0-9]+) duplicates'),
+              SUBSTRING(notes FROM '([0-9]+) entries'),
+              'Multiple'
+            )
+          ELSE NULL
+        END as consolidation_count
+      FROM stock_logs 
+      WHERE product_id = $1
+      ORDER BY created_at DESC
+      LIMIT 200
+    `, [productId])
+
+    // Calculate enhanced statistics
+    const csvStats = {
+      totalCsvUploads: csvSessionsResult.rows.length,
+      totalCsvChanges: csvSessionsResult.rows.reduce((sum, row) => sum + parseInt(row.total_changes), 0),
+      csvUploadsWithConsolidation: csvSessionsResult.rows.filter(r => r.has_consolidation).length,
+      lastCsvUpload: csvSessionsResult.rows.length > 0 ? csvSessionsResult.rows[0].session_start : null,
+      uniqueCsvFiles: [...new Set(csvSessionsResult.rows.map(r => r.csv_filename).filter(f => f))].length
+    }
+
+    const timelineStats = {
+      totalEvents: auditTimelineResult.rows.length,
+      bulkOperations: auditTimelineResult.rows.filter(r => r.is_bulk_operation).length,
+      consolidatedOperations: auditTimelineResult.rows.filter(r => r.is_consolidated).length,
+      lastEvent: auditTimelineResult.rows.length > 0 ? auditTimelineResult.rows[0].created_at : null
+    }
+
     res.status(200).json({
       success: true,
       product,
@@ -119,10 +271,14 @@ export default async function handler(req, res) {
         quantityHistory: quantityHistoryResult.rows,
         scanHistory: scanHistoryResult.rows,
         mobileActivity: mobileActivityResult.rows,
+        csvSessions: csvSessionsResult.rows,
+        auditTimeline: auditTimelineResult.rows,
         statistics: {
           sync: syncStats,
           quantity: quantityStats,
           scan: scanStats,
+          csv: csvStats,
+          timeline: timelineStats,
           mobile: {
             totalActivities: mobileActivityResult.rows.length,
             lastActivityDate: mobileActivityResult.rows.length > 0 ? mobileActivityResult.rows[0].created_at : null

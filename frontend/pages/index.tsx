@@ -67,6 +67,13 @@ interface DashboardStats {
   }
 }
 
+interface SyncDetail {
+  product_name: string
+  sku: string
+  status: 'success' | 'failed'
+  message: string
+}
+
 export default function ProductsEnhanced() {
   const [products, setProducts] = useState<Product[]>([])
   const [productsNeedingSync, setProductsNeedingSync] = useState<Product[]>([])
@@ -98,6 +105,28 @@ export default function ProductsEnhanced() {
   
   // Debug panel state
   const [showDebugPanel, setShowDebugPanel] = useState(false)
+  
+  // Sync progress tracking
+  const [syncProgress, setSyncProgress] = useState({
+    isActive: false,
+    current: 0,
+    total: 0,
+    message: '',
+    storeName: '',
+    stage: 'preparing' // preparing, syncing, completed
+  })
+  
+  // Sync completion report
+  const [syncReport, setSyncReport] = useState({
+    show: false,
+    results: {
+      total: 0,
+      successful: 0,
+      failed: 0,
+      errors: [] as string[],
+      details: [] as SyncDetail[]
+    }
+  })
   const [debugResults, setDebugResults] = useState<any>(null)
   const [debugLoading, setDebugLoading] = useState(false)
 
@@ -315,13 +344,10 @@ export default function ProductsEnhanced() {
   const handleAuditProduct = async (product: Product) => {
     try {
       setLoadingAudit(true)
-      const response = await axios.post('/api/products/audit', {
-        productId: product.id,
-        sku: product.sku
-      })
+      const response = await axios.get(`/api/products/audit-report?productId=${product.id}`)
 
       if (response.data.success) {
-        setAuditData(response.data.audit.changes_timeline)
+        setAuditData(response.data.auditReport)
         setShowAuditModal(true)
       }
     } catch (error: any) {
@@ -337,21 +363,100 @@ export default function ProductsEnhanced() {
       return
     }
 
+    // Initialize sync progress
+    setSyncProgress({
+      isActive: true,
+      current: 0,
+      total: selectedProducts.size,
+      message: 'Preparing sync...',
+      storeName: 'All Stores',
+      stage: 'preparing'
+    })
+
     setSyncing(true)
     try {
-      const selectedSkus = products
-        .filter(p => selectedProducts.has(p.id.toString()))
-        .map(p => p.sku)
+      const selectedProductIds = Array.from(selectedProducts).map(id => parseInt(id))
 
-      const response = await axios.post('/api/sync/multi', { skus: selectedSkus })
-      toast.success(`Successfully synced ${selectedProducts.size} products`)
+      // Update progress
+      setSyncProgress(prev => ({
+        ...prev,
+        stage: 'syncing',
+        message: `Syncing ${selectedProducts.size} products...`
+      }))
+
+      // Use optimized sync API for better handling of large syncs
+      const response = await axios.post('/api/sync/bulk-optimized', { 
+        productIds: selectedProductIds,
+        syncAll: true,
+        batchSize: 10
+      }, {
+        timeout: 300000 // 5 minute timeout
+      })
+      
+      if (response.data.success) {
+        const { summary } = response.data
+        
+        // Show completion report
+        setSyncReport({
+          show: true,
+          results: {
+            total: summary.total || selectedProducts.size,
+            successful: summary.successful || 0,
+            failed: summary.failed || 0,
+            errors: response.data.errors || [],
+            details: response.data.details || []
+          }
+        })
+        
+        setSyncProgress(prev => ({
+          ...prev,
+          stage: 'completed',
+          message: 'Sync completed successfully!',
+          current: prev.total
+        }))
+        
+        if (summary.failed === 0) {
+          toast.success(`Successfully synced ${selectedProducts.size} products to all stores`)
+        } else if (summary.successful > 0) {
+          toast.success(`Partial sync: ${summary.successful} successful, ${summary.failed} failed`)
+        } else {
+          toast.error(`Failed to sync selected products: ${summary.failed} failed`)
+        }
+      } else {
+        setSyncProgress(prev => ({
+          ...prev,
+          stage: 'completed',
+          message: 'Sync failed',
+          current: prev.total
+        }))
+        toast.error(response.data.message || 'Failed to sync selected products')
+      }
+      
       setSelectedProducts(new Set())
       fetchProductsNeedingSync()
       fetchDashboardStats()
     } catch (error: any) {
+      console.error('Sync selected error:', error)
+      setSyncProgress(prev => ({
+        ...prev,
+        stage: 'completed',
+        message: 'Sync failed with error',
+        current: prev.total
+      }))
       toast.error(error.response?.data?.message || 'Failed to sync selected products')
     } finally {
       setSyncing(false)
+      // Reset progress after a delay
+      setTimeout(() => {
+        setSyncProgress({
+          isActive: false,
+          current: 0,
+          total: 0,
+          message: '',
+          storeName: '',
+          stage: 'preparing'
+        })
+      }, 3000)
     }
   }
 
@@ -525,59 +630,28 @@ export default function ProductsEnhanced() {
 
     try {
       setBulkSyncing(true)
-      let successCount = 0
-      let errorCount = 0
-      const errors: string[] = []
-
-      // Process all products concurrently for faster sync
-      const syncPromises = productsToSync.map(async (product) => {
-        try {
-          const response = await axios.post('/api/products/sync', {
-            productId: product.id,
-            storeId: selectedStore
-          })
-          
-          if (response.data.success) {
-            return { success: true, product: product.sku }
-          } else {
-            return { success: false, product: product.sku, error: response.data.message || 'Unknown error' }
-          }
-        } catch (error: any) {
-          const errorMsg = error.response?.data?.message || error.message || 'Unknown error'
-          console.error(`Failed to sync product ${product.sku}:`, error)
-          return { success: false, product: product.sku, error: errorMsg }
-        }
-      })
-
-      // Wait for all sync operations to complete
-      const results = await Promise.allSettled(syncPromises)
       
-      results.forEach((result) => {
-        if (result.status === 'fulfilled') {
-          if (result.value.success) {
-            successCount++
-          } else {
-            errorCount++
-            errors.push(`${result.value.product}: ${result.value.error}`)
-          }
-        } else {
-          errorCount++
-          errors.push(`Sync failed: ${result.reason}`)
-        }
+      const response = await axios.post('/api/sync/bulk-optimized', {
+        storeId: selectedStore,
+        syncAll: false,
+        productIds: productsToSync.map(p => p.id),
+        batchSize: 10
+      }, {
+        timeout: 300000 // 5 minute timeout
       })
-
-      // Show detailed results
-      if (successCount > 0 && errorCount === 0) {
-        toast.success(`✅ Successfully synced ${successCount} products to ${storeInfo?.store_name}`)
-      } else if (successCount > 0 && errorCount > 0) {
-        toast(`⚠️ Partial sync: ${successCount} successful, ${errorCount} failed`, {
-          duration: 6000,
-          icon: '⚠️'
-        })
-        console.warn('Sync errors:', errors)
+      
+      if (response.data.success) {
+        const { summary, message } = response.data
+        
+        if (summary.failed === 0) {
+          toast.success(`🎉 Successfully synced ${summary.successful} products to ${storeInfo?.store_name}!`)
+        } else if (summary.successful > 0) {
+          toast.success(`✅ Partial sync: ${summary.successful} successful, ${summary.failed} failed`)
+        } else {
+          toast.error(`❌ Failed to sync products to ${storeInfo?.store_name}`)
+        }
       } else {
-        toast.error(`❌ Sync failed: ${errorCount} errors occurred`)
-        console.error('All sync errors:', errors)
+        toast.error(response.data.message || 'Failed to sync products')
       }
 
       setShowStoreSelector(false)
@@ -585,6 +659,7 @@ export default function ProductsEnhanced() {
       fetchDashboardStats() // Refresh stats after sync
       fetchProductsNeedingSync() // Refresh sync status
     } catch (error: any) {
+      console.error('Sync by store error:', error)
       toast.error('Failed to sync products: ' + (error.response?.data?.message || error.message))
     } finally {
       setBulkSyncing(false)
@@ -626,77 +701,33 @@ export default function ProductsEnhanced() {
 
     try {
       setBulkSyncing(true)
-      let totalSuccess = 0
-      let totalErrors = 0
-      const storeResults: any[] = []
-
-      // Process all products concurrently for faster sync
-      const syncPromises = productsToSync.map(async (product) => {
-        try {
-          const response = await axios.post('/api/products/sync', {
-            productId: product.id
-            // No storeId means sync to all stores
-          })
-          
-          if (response.data.success && response.data.summary) {
-            return {
-              success: true,
-              product: product.sku,
-              successful: response.data.summary.successful,
-              failed: response.data.summary.failed,
-              results: response.data.results || []
-            }
-          } else {
-            return {
-              success: false,
-              product: product.sku,
-              successful: 0,
-              failed: 1,
-              results: []
-            }
-          }
-        } catch (error: any) {
-          console.error(`Failed to sync product ${product.sku}:`, error)
-          return {
-            success: false,
-            product: product.sku,
-            successful: 0,
-            failed: 1,
-            results: []
-          }
-        }
-      })
-
-      // Wait for all sync operations to complete
-      const results = await Promise.allSettled(syncPromises)
       
-      results.forEach((result) => {
-        if (result.status === 'fulfilled') {
-          totalSuccess += result.value.successful
-          totalErrors += result.value.failed
-          if (result.value.results) {
-            storeResults.push(...result.value.results)
-          }
-        } else {
-          totalErrors++
-        }
+      const response = await axios.post('/api/sync/bulk-optimized', {
+        syncAll: true,
+        productIds: productsToSync.map(p => p.id),
+        batchSize: 10
+      }, {
+        timeout: 300000 // 5 minute timeout
       })
-
-      // Show comprehensive results
-      if (totalSuccess > 0 && totalErrors === 0) {
-        toast.success(`🎉 Successfully synced ${totalSuccess} products across all stores!`)
-      } else if (totalSuccess > 0 && totalErrors > 0) {
-        toast(`⚠️ Bulk sync completed: ${totalSuccess} successful, ${totalErrors} failed`, {
-          duration: 8000,
-          icon: '⚠️'
-        })
+      
+      if (response.data.success) {
+        const { summary, message } = response.data
+        
+        if (summary.failed === 0) {
+          toast.success(`🎉 Successfully synced ${summary.successful} products across all stores!`)
+        } else if (summary.successful > 0) {
+          toast.success(`✅ Partial sync: ${summary.successful} successful, ${summary.failed} failed`)
+        } else {
+          toast.error(`❌ Failed to sync products to all stores`)
+        }
       } else {
-        toast.error(`❌ Bulk sync failed: ${totalErrors} errors occurred`)
+        toast.error(response.data.message || 'Failed to sync products')
       }
 
       fetchDashboardStats() // Refresh stats after sync
       fetchProductsNeedingSync() // Refresh sync status
     } catch (error: any) {
+      console.error('Sync to all stores error:', error)
       toast.error('Failed to sync products to all stores: ' + (error.response?.data?.message || error.message))
     } finally {
       setBulkSyncing(false)
@@ -1441,45 +1472,208 @@ export default function ProductsEnhanced() {
             </div>
           )}
 
-          {/* Audit Modal */}
+          {/* Enhanced Audit Modal */}
           {showAuditModal && auditData && (
             <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-              <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
-                <div className="mt-3">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-medium text-gray-900">Product Audit History</h3>
-                    <button
-                      onClick={() => setShowAuditModal(false)}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="h-6 w-6" />
+              <div className="relative top-10 mx-auto p-5 border w-11/12 md:w-4/5 lg:w-3/4 xl:w-2/3 shadow-lg rounded-md bg-white max-h-[90vh] flex flex-col">
+                {/* Fixed Header */}
+                <div className="flex items-center justify-between mb-4 border-b pb-4 flex-shrink-0">
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900">Product Audit History</h3>
+                    <p className="text-sm text-gray-600 mt-1">Comprehensive tracking of all product changes and CSV uploads</p>
+                  </div>
+                  <button
+                    onClick={() => setShowAuditModal(false)}
+                    className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-full"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
+
+                {/* Scrollable Content Area */}
+                <div className="flex-1 overflow-y-auto min-h-0">
+                  {/* Statistics Summary */}
+                  {auditData.statistics && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-600">{auditData.statistics.quantity?.totalChanges || 0}</div>
+                        <div className="text-xs text-gray-600">Total Changes</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">{auditData.statistics.csv?.totalCsvUploads || 0}</div>
+                        <div className="text-xs text-gray-600">CSV Uploads</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-orange-600">{auditData.statistics.sync?.totalSyncs || 0}</div>
+                        <div className="text-xs text-gray-600">Sync Operations</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-purple-600">{auditData.statistics.scan?.totalScans || 0}</div>
+                        <div className="text-xs text-gray-600">Scans</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tabs for different views */}
+                  <div className="flex space-x-1 mb-4 border-b">
+                    <button className="px-4 py-2 text-sm font-medium text-blue-600 border-b-2 border-blue-600">
+                      Complete Timeline
+                    </button>
+                    <button className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+                      CSV Uploads
+                    </button>
+                    <button className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+                      Sync History
                     </button>
                   </div>
-                  <div className="max-h-96 overflow-y-auto">
+
+                  {/* Audit Timeline */}
+                  <div className="pb-4">
                     <div className="space-y-4">
-                      {auditData.map((audit: any, index: number) => (
-                        <div key={index} className="border-l-4 border-blue-500 pl-4 py-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-gray-900">
-                              {audit.change_type}
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              {formatRelativeTime(audit.timestamp)}
-                            </span>
+                      {auditData.auditTimeline?.map((audit: any, index: number) => (
+                        <div key={index} className="relative">
+                          {/* Timeline line */}
+                          {index < auditData.auditTimeline.length - 1 && (
+                            <div className="absolute left-4 top-8 w-0.5 h-full bg-gray-200"></div>
+                          )}
+                          
+                          <div className="flex items-start space-x-4">
+                            {/* Event icon */}
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                              {audit.event_type === 'stock_in' ? (
+                                <TrendingUp className="h-4 w-4 text-green-600" />
+                              ) : audit.event_type === 'stock_out' ? (
+                                <TrendingDown className="h-4 w-4 text-red-600" />
+                              ) : audit.event_type === 'sync' ? (
+                                <RefreshCw className="h-4 w-4 text-blue-600" />
+                              ) : (
+                                <Package className="h-4 w-4 text-gray-600" />
+                              )}
+                            </div>
+
+                            {/* Event content */}
+                            <div className="flex-1 min-w-0 bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-sm font-semibold text-gray-900">
+                                    {audit.event_type === 'stock_in' ? 'Stock Added' : 
+                                     audit.event_type === 'stock_out' ? 'Stock Removed' :
+                                     audit.event_type === 'sync' ? 'Sync Operation' : 'Other'}
+                                  </span>
+                                  {audit.is_bulk_operation && (
+                                    <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                                      CSV Upload
+                                    </span>
+                                  )}
+                                  {audit.is_consolidated && (
+                                    <span className="px-2 py-1 text-xs font-medium bg-orange-100 text-orange-800 rounded-full">
+                                      Consolidated
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-xs text-gray-500">
+                                  {formatRelativeTime(audit.created_at)}
+                                </span>
+                              </div>
+
+                              {/* Quantity change */}
+                              {audit.quantity && (
+                                <div className="text-sm text-gray-700 mb-2">
+                                  <strong>Quantity:</strong> {audit.quantity} units
+                                </div>
+                              )}
+
+                              {/* CSV file details */}
+                              {audit.csv_filename && (
+                                <div className="text-sm text-blue-700 mb-2 p-2 bg-blue-50 rounded">
+                                  <strong>📁 CSV File:</strong> {audit.csv_filename}
+                                  {audit.consolidation_count && (
+                                    <span className="ml-2 text-orange-600">
+                                      ({audit.consolidation_count} entries consolidated)
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Notes */}
+                              {audit.notes && (
+                                <div className="text-sm text-gray-600 mb-2">
+                                  <strong>Details:</strong> {audit.notes}
+                                </div>
+                              )}
+
+                              {/* Performed by */}
+                              <div className="flex items-center justify-between text-xs text-gray-500">
+                                <span>Performed by: <strong>{audit.user_name || 'System'}</strong></span>
+                                <span>{new Date(audit.created_at).toLocaleString()}</span>
+                              </div>
+
+                              {/* Sync status for sync operations */}
+                              {audit.event_type === 'sync' && audit.sync_status && (
+                                <div className="mt-2">
+                                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                    audit.sync_status === 'success' ? 'bg-green-100 text-green-800' :
+                                    audit.sync_status === 'failed' ? 'bg-red-100 text-red-800' :
+                                    'bg-yellow-100 text-yellow-800'
+                                  }`}>
+                                    {audit.sync_status.toUpperCase()}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <p className="text-sm text-gray-600 mt-1">{audit.description}</p>
-                          {audit.notes && (
-                            <p className="text-xs text-gray-500 mt-1 italic">
-                              Note: {audit.notes}
-                            </p>
-                          )}
-                          {audit.performed_by && (
-                            <p className="text-xs text-gray-500 mt-1">
-                              by {audit.performed_by}
-                            </p>
-                          )}
                         </div>
                       ))}
+
+                      {/* CSV Sessions Summary */}
+                      {auditData.csvSessions && auditData.csvSessions.length > 0 && (
+                        <div className="mt-8">
+                          <h4 className="text-lg font-semibold text-gray-900 mb-4">📊 CSV Upload Sessions</h4>
+                          <div className="space-y-3">
+                            {auditData.csvSessions.map((session: any, index: number) => (
+                              <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center space-x-2">
+                                    <FileText className="h-4 w-4 text-blue-600" />
+                                    <span className="font-medium text-gray-900">
+                                      {session.csv_filename || 'Unknown File'}
+                                    </span>
+                                    {session.has_consolidation && (
+                                      <span className="px-2 py-1 text-xs font-medium bg-orange-100 text-orange-800 rounded-full">
+                                        Consolidated
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-sm text-gray-500">
+                                    {new Date(session.session_start).toLocaleDateString()}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                  <div>
+                                    <span className="text-gray-600">Type:</span>
+                                    <span className="ml-1 font-medium">{session.upload_type}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-600">Changes:</span>
+                                    <span className="ml-1 font-medium">{session.total_changes}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-600">Stock In:</span>
+                                    <span className="ml-1 font-medium text-green-600">{session.total_stock_in}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-600">Stock Out:</span>
+                                    <span className="ml-1 font-medium text-red-600">{session.total_stock_out}</span>
+                                  </div>
+                                </div>
+                                <div className="text-xs text-gray-500 mt-2">
+                                  Session: {new Date(session.session_start).toLocaleString()} - {new Date(session.session_end).toLocaleString()}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1487,6 +1681,141 @@ export default function ProductsEnhanced() {
             </div>
           )}
         </div>
+
+        {/* Sync Progress Bar */}
+        {syncProgress.isActive && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-96 max-w-md mx-4">
+              <div className="text-center">
+                <div className="flex items-center justify-center mb-4">
+                  {syncProgress.stage === 'preparing' && <RefreshCw className="h-8 w-8 animate-spin text-blue-500" />}
+                  {syncProgress.stage === 'syncing' && <RefreshCw className="h-8 w-8 animate-spin text-green-500" />}
+                  {syncProgress.stage === 'completed' && (
+                    syncProgress.message.includes('failed') ? 
+                      <XCircle className="h-8 w-8 text-red-500" /> : 
+                      <CheckCircle className="h-8 w-8 text-green-500" />
+                  )}
+                </div>
+                
+                <h3 className="text-lg font-semibold mb-2">
+                  {syncProgress.stage === 'preparing' && 'Preparing Sync'}
+                  {syncProgress.stage === 'syncing' && 'Syncing Products'}
+                  {syncProgress.stage === 'completed' && 'Sync Complete'}
+                </h3>
+                
+                <p className="text-gray-600 mb-4">{syncProgress.message}</p>
+                
+                {syncProgress.stage === 'syncing' && (
+                  <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                    <div 
+                      className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${(syncProgress.current / syncProgress.total) * 100}%` }}
+                    ></div>
+                  </div>
+                )}
+                
+                <p className="text-sm text-gray-500">
+                  {syncProgress.stage === 'syncing' && `${syncProgress.current} of ${syncProgress.total} products`}
+                  {syncProgress.stage === 'preparing' && 'Initializing...'}
+                  {syncProgress.stage === 'completed' && 'Processing complete'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sync Completion Report Modal */}
+        {syncReport.show && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold">Sync Report</h3>
+                <button
+                  onClick={() => setSyncReport({ show: false, results: { total: 0, successful: 0, failed: 0, errors: [], details: [] } })}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+
+              {/* Summary Cards */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-blue-50 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-blue-600">{syncReport.results.total}</div>
+                  <div className="text-sm text-blue-600">Total Products</div>
+                </div>
+                <div className="bg-green-50 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-green-600">{syncReport.results.successful}</div>
+                  <div className="text-sm text-green-600">Successful</div>
+                </div>
+                <div className="bg-red-50 rounded-lg p-4 text-center">
+                  <div className="text-2xl font-bold text-red-600">{syncReport.results.failed}</div>
+                  <div className="text-sm text-red-600">Failed</div>
+                </div>
+              </div>
+
+              {/* Success Rate */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700">Success Rate</span>
+                  <span className="text-sm font-medium text-gray-700">
+                    {syncReport.results.total > 0 ? Math.round((syncReport.results.successful / syncReport.results.total) * 100) : 0}%
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-green-500 h-2 rounded-full"
+                    style={{ width: `${syncReport.results.total > 0 ? (syncReport.results.successful / syncReport.results.total) * 100 : 0}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* Error Details */}
+              {syncReport.results.errors.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="text-lg font-semibold mb-3 text-red-600">Errors ({syncReport.results.errors.length})</h4>
+                  <div className="bg-red-50 rounded-lg p-4 max-h-40 overflow-y-auto">
+                    {syncReport.results.errors.map((error, index) => (
+                      <div key={index} className="text-sm text-red-700 mb-1">
+                        • {error}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Detailed Results */}
+              {syncReport.results.details.length > 0 && (
+                <div>
+                  <h4 className="text-lg font-semibold mb-3">Detailed Results</h4>
+                  <div className="bg-gray-50 rounded-lg p-4 max-h-60 overflow-y-auto">
+                    <div className="space-y-2">
+                      {syncReport.results.details.map((detail, index) => (
+                        <div key={index} className="flex items-center justify-between text-sm">
+                          <span className="font-medium">{detail.product_name || detail.sku}</span>
+                          <span className={`px-2 py-1 rounded text-xs ${
+                            detail.status === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          }`}>
+                            {detail.status === 'success' ? 'Success' : 'Failed'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end mt-6">
+                <button
+                  onClick={() => setSyncReport({ show: false, results: { total: 0, successful: 0, failed: 0, errors: [], details: [] } })}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </Layout>
     </ProtectedRoute>
   )
