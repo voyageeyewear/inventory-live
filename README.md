@@ -99,8 +99,8 @@ A comprehensive full-stack inventory management system with barcode scanning cap
 
 ### 1. Clone Repository
    ```bash
-git clone <repository-url>
-cd "Inventory System"
+git clone https://github.com/voyageeyewear/inventory-live.git
+cd inventory-live
 ```
 
 ### 2. Environment Variables
@@ -417,7 +417,7 @@ POST /api/scan-logs
 
 ## 🤝 Contributing
 
-1. Fork the repository
+1. Fork the repository: [https://github.com/voyageeyewear/inventory-live](https://github.com/voyageeyewear/inventory-live)
 2. Create feature branch (`git checkout -b feature/amazing-feature`)
 3. Commit changes (`git commit -m 'Add amazing feature'`)
 4. Push to branch (`git push origin feature/amazing-feature`)
