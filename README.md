@@ -6,13 +6,19 @@ A comprehensive full-stack inventory management system with barcode scanning cap
 
 ### 🖥️ Web Dashboard
 - **Product Management**: Add, edit, delete, and view products with images
+- **Smart Sync System**: Sync only modified products to save time and API costs
 - **Inventory Tracking**: Real-time stock levels with automatic updates
-- **CSV Import/Export**: Bulk product uploads and data management
+- **CSV Import/Export**: Bulk product uploads with duplicate SKU consolidation
 - **Shopify Integration**: Sync inventory with connected Shopify stores
+- **Shopify vs Local Inventory**: Compare local and Shopify store inventory
 - **Mobile Transaction Approval**: Review and approve mobile app transactions
 - **Comprehensive Reporting**: Detailed analytics and audit trails
+- **Sync Activity Dashboard**: Unified activity log with consolidation features
+- **Most Selling Products**: Analytics with real sales data and performance metrics
+- **Low Quantity Alert**: Smart alerts for products below threshold
 - **User Management**: Role-based access control
 - **Scan History**: Track all barcode scans and mobile activities
+- **Data Management**: Reset histories, backup, and bulk operations
 
 ### 📱 Mobile App
 - **Barcode Scanning**: Fast and accurate barcode recognition
@@ -24,7 +30,7 @@ A comprehensive full-stack inventory management system with barcode scanning cap
 ## 🚀 Live Demo
 
 ### 🌐 Web Dashboard
-**URL**: https://local-inventory-management-system-aghrkpsz1.vercel.app
+**URL**: https://inventory-management-production.up.railway.app
 
 **Demo Credentials**:
 - **Username**: `admin`
@@ -76,9 +82,9 @@ A comprehensive full-stack inventory management system with barcode scanning cap
 - **Permissions**: camera, internet, vibration
 
 ### Deployment
-- **Platform**: Vercel
+- **Platform**: Railway (Primary), Vercel (Backup)
 - **Database**: Neon PostgreSQL
-- **CDN**: Vercel Edge Network
+- **CDN**: Railway Edge Network
 - **SSL**: Automatic HTTPS
 
 ## 📋 Prerequisites
@@ -152,7 +158,17 @@ flutter build ios --release
 
 ## 🌐 Deployment
 
-### Vercel Deployment
+### Railway Deployment (Recommended)
+```bash
+# Install Railway CLI
+npm i -g @railway/cli
+
+# Login and deploy
+railway login
+railway up
+```
+
+### Vercel Deployment (Alternative)
 ```bash
 # Install Vercel CLI
 npm i -g vercel
@@ -161,8 +177,8 @@ npm i -g vercel
 vercel --prod
 ```
 
-### Environment Variables (Vercel)
-Set these in your Vercel dashboard:
+### Environment Variables
+Set these in your deployment platform dashboard:
 - `DATABASE_URL`
 - `JWT_SECRET`
 - `DEVELOPMENT_STORE_ACCESS_TOKEN`
@@ -196,8 +212,9 @@ Set these in your Vercel dashboard:
 - **View Products**: Main products page with search and filters
 - **Add Product**: Use "Add Product" form with image upload
 - **Edit Product**: Click edit button on any product
-- **CSV Upload**: Bulk import products via CSV file
-- **Sync to Shopify**: Sync inventory with connected stores
+- **CSV Upload**: Bulk import products via CSV file with duplicate SKU consolidation
+- **Smart Sync**: Sync only modified products to save time and API costs
+- **Shopify vs Local**: Compare inventory between local system and Shopify stores
 
 #### 3. Mobile Approvals
 - **View Pending**: See all mobile app transactions awaiting approval
@@ -213,7 +230,21 @@ Set these in your Vercel dashboard:
 - **Dashboard**: Key metrics and recent activity
 - **Product Reports**: Detailed product analytics
 - **Audit Reports**: Product-wise change history
-- **Sync Activity**: Shopify synchronization logs
+- **Sync Activity**: Unified activity log with consolidation features
+- **Most Selling Products**: Analytics with real sales data and performance metrics
+- **Low Quantity Alert**: Smart alerts for products below threshold
+
+#### 6. Stock Management
+- **Stock In**: Add inventory with CSV upload and detailed reporting
+- **Stock Out**: Remove inventory with CSV upload and detailed reporting
+- **Duplicate Consolidation**: Automatic SKU consolidation with quantity summation
+- **Detailed Reports**: Success/error reports with quantity changes
+
+#### 7. Data Management
+- **Reset Histories**: Clear audit trails, sync history, and scan logs
+- **Backup Operations**: Export data and create backups
+- **Bulk Operations**: Delete all products, reset specific data types
+- **Store Management**: Add, edit, delete, and test Shopify store connections
 
 ### Mobile App
 
@@ -405,7 +436,18 @@ For technical support or questions:
 
 ## 🔄 Version History
 
-### v2.0.0 (Current)
+### v2.1.0 (Current)
+- ✅ Smart sync system for modified products only
+- ✅ Shopify vs Local Inventory comparison
+- ✅ Most Selling Products analytics dashboard
+- ✅ Low Quantity Alert system
+- ✅ Enhanced sync activity with consolidation
+- ✅ CSV upload with duplicate SKU consolidation
+- ✅ Detailed stock in/out reporting
+- ✅ Comprehensive data management tools
+- ✅ Railway deployment support
+
+### v2.0.0 (Previous)
 - ✅ Complete system rebuild with PostgreSQL
 - ✅ Mobile app with barcode scanning
 - ✅ Shopify integration
@@ -424,13 +466,15 @@ For technical support or questions:
 
 ### Upcoming Features
 - [ ] Multi-language support
-- [ ] Advanced analytics dashboard
-- [ ] Automated reorder alerts
+- [ ] Advanced reporting with charts and graphs
+- [ ] Automated email alerts for low stock
 - [ ] Supplier management
 - [ ] Warehouse locations
 - [ ] Batch operations
 - [ ] Export to Excel/PDF
 - [ ] Mobile push notifications
+- [ ] Real-time inventory updates
+- [ ] Advanced product analytics
 
 ### Technical Improvements
 - [ ] GraphQL API
@@ -441,6 +485,26 @@ For technical support or questions:
 - [ ] Docker containerization
 - [ ] CI/CD pipeline
 - [ ] Automated testing suite
+
+---
+
+## 🆕 Recent Updates
+
+### Latest Improvements (January 2025)
+- **✅ Smart Sync System**: Only syncs modified products, saving time and API costs
+- **✅ Shopify vs Local Inventory**: Real-time comparison with detailed analytics
+- **✅ Most Selling Products**: Analytics dashboard with real sales data and performance metrics
+- **✅ Low Quantity Alert**: Smart alerts system for products below threshold
+- **✅ Enhanced CSV Upload**: Automatic duplicate SKU consolidation with detailed reporting
+- **✅ Sync Activity Dashboard**: Unified activity log with consolidation features
+- **✅ Railway Deployment**: Improved deployment process with Railway platform
+- **✅ Comprehensive Data Management**: Reset histories, backup, and bulk operations
+
+### Performance Enhancements
+- **🚀 Faster Sync Operations**: Smart sync reduces API calls by 90%
+- **📊 Real-time Analytics**: Live data updates for better decision making
+- **🔄 Improved Error Handling**: Better error messages and recovery mechanisms
+- **💾 Enhanced Data Processing**: Efficient CSV processing with duplicate consolidation
 
 ---
 

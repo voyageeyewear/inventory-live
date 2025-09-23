@@ -7,7 +7,7 @@ import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
 
 interface ShopifyStore {
-  _id: string
+  id: string
   store_name: string
   store_domain: string
   access_token: string
@@ -240,7 +240,7 @@ export default function Settings() {
           ) : (
             <div className="space-y-4">
               {stores.map((store) => (
-                <div key={store._id} className="border border-gray-200 rounded-lg p-4">
+                <div key={store.id} className="border border-gray-200 rounded-lg p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="flex-shrink-0">
@@ -275,13 +275,13 @@ export default function Settings() {
                         </span>
                       </div>
                       <button
-                        onClick={() => testConnection(store._id)}
+                        onClick={() => testConnection(store.id)}
                         className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                       >
                         Test
                       </button>
                       <button
-                        onClick={() => testSync(store._id)}
+                        onClick={() => testSync(store.id)}
                         className="text-sm text-green-600 hover:text-green-700 font-medium"
                         disabled={!store.connected}
                         title={store.connected ? 'Test sync functionality' : 'Connect store first'}
@@ -289,7 +289,7 @@ export default function Settings() {
                         Sync Test
                       </button>
                       <button
-                        onClick={() => handleDeleteStore(store._id)}
+                        onClick={() => handleDeleteStore(store.id)}
                         className="text-red-600 hover:text-red-700"
                       >
                         <Trash2 className="h-4 w-4" />

@@ -1,170 +1,145 @@
 import { query } from '../../../lib/postgres'
-import jwt from 'jsonwebtoken'
-
-// Middleware to authenticate token
-const authenticateToken = async (req) => {
-  const token = req.headers.authorization?.replace('Bearer ', '')
-  
-  if (!token) {
-    throw new Error('No token provided')
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-key-2024-production')
-    
-    const userResult = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.id])
-
-    if (userResult.rows.length === 0) {
-      throw new Error('Invalid token or user inactive')
-    }
-
-    return userResult.rows[0]
-  } catch (error) {
-    throw new Error('Authentication failed')
-  }
-}
 
 export default async function handler(req, res) {
-  // Add CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end()
-  }
-
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' })
   }
 
-  try {
-    // Authenticate user
-    const user = await authenticateToken(req)
-    
-    const { storeId } = req.body
-    
-    if (!storeId) {
-      return res.status(400).json({ message: 'Store ID is required' })
-    }
+  const { storeId } = req.body
 
+  if (!storeId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Store ID is required'
+    })
+  }
+
+  try {
     // Get store details
-    const storeResult = await query('SELECT * FROM stores WHERE id = $1 AND is_active = true', [storeId])
-    
+    const storeResult = await query(
+      'SELECT id, store_name, shopify_domain, access_token, connected FROM stores WHERE id = $1',
+      [storeId]
+    )
+
     if (storeResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Store not found' })
+      return res.status(404).json({
+        success: false,
+        message: 'Store not found'
+      })
     }
 
     const store = storeResult.rows[0]
 
+    if (!store.connected) {
+      return res.status(400).json({
+        success: false,
+        message: 'Store is not connected. Please test connection first.'
+      })
+    }
+
     // Get a few sample products to test sync
-    const productsResult = await query('SELECT * FROM products WHERE is_active = true LIMIT 5')
+    const productsResult = await query(`
+      SELECT id, sku, product_name, quantity 
+      FROM products 
+      WHERE is_active = true 
+      ORDER BY updated_at DESC 
+      LIMIT 5
+    `)
+
     const products = productsResult.rows
 
     if (products.length === 0) {
-      return res.status(400).json({ message: 'No products found to sync' })
+      return res.status(400).json({
+        success: false,
+        message: 'No products found to test sync'
+      })
     }
 
-    let syncResults = []
+    const results = []
     let successCount = 0
     let errorCount = 0
 
-    console.log(`🔄 Testing sync to ${store.store_name} (${store.store_domain})`)
-
-    // Test sync for each sample product
+    // Test sync for each product
     for (const product of products) {
       try {
-        // Test Shopify API connection by getting shop info
-        const shopResponse = await fetch(`https://${store.store_domain}/admin/api/2023-10/shop.json`, {
+        // Try to find the product in Shopify by SKU
+        const shopifyResponse = await fetch(`https://${store.shopify_domain}/admin/api/2023-10/products.json?limit=250`, {
           headers: {
             'X-Shopify-Access-Token': store.access_token,
             'Content-Type': 'application/json'
           }
         })
 
-        if (shopResponse.ok) {
-          const shopData = await shopResponse.json()
-          
-          // Simulate successful sync (in real implementation, you would create/update products)
-          syncResults.push({
-            product_sku: product.sku,
-            product_name: product.product_name,
-            quantity: product.quantity,
-            status: 'success',
-            message: `✅ Ready to sync to ${shopData.shop?.name || store.store_name}`,
-            shop_name: shopData.shop?.name,
-            shop_domain: shopData.shop?.domain
-          })
+        if (!shopifyResponse.ok) {
+          throw new Error(`Shopify API error: ${shopifyResponse.status}`)
+        }
 
-          // Create test sync audit log
-          await query(`
-            INSERT INTO stock_logs (product_id, product_name, sku, type, quantity, previous_quantity, new_quantity, notes, user_id, user_name, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
-          `, [
-            product.id,
-            product.product_name,
-            product.sku,
-            'sync_test',
-            product.quantity,
-            product.quantity,
-            product.quantity,
-            `Sync test to ${store.store_name}: Connection successful`,
-            user.id,
-            user.username
-          ])
+        const shopifyData = await shopifyResponse.json()
+        const shopifyProducts = shopifyData.products || []
 
-          successCount++
-        } else {
-          const errorText = await shopResponse.text()
-          syncResults.push({
-            product_sku: product.sku,
-            product_name: product.product_name,
-            status: 'error',
-            message: `❌ API Error: ${shopResponse.status} ${shopResponse.statusText}`,
-            error_details: errorText
-          })
+        // Search for the SKU
+        let found = false
+        for (const shopifyProduct of shopifyProducts) {
+          for (const variant of shopifyProduct.variants) {
+            if (variant.sku === product.sku) {
+              found = true
+              successCount++
+              results.push({
+                sku: product.sku,
+                product_name: product.product_name,
+                local_quantity: product.quantity,
+                shopify_quantity: variant.inventory_quantity || 0,
+                status: 'found',
+                shopify_product_id: shopifyProduct.id,
+                shopify_variant_id: variant.id
+              })
+              break
+            }
+          }
+          if (found) break
+        }
+
+        if (!found) {
           errorCount++
+          results.push({
+            sku: product.sku,
+            product_name: product.product_name,
+            local_quantity: product.quantity,
+            shopify_quantity: 0,
+            status: 'not_found',
+            message: 'Product not found in Shopify'
+          })
         }
       } catch (error) {
-        syncResults.push({
-          product_sku: product.sku,
-          product_name: product.product_name,
-          status: 'error',
-          message: `❌ Connection Error: ${error.message}`
-        })
         errorCount++
+        results.push({
+          sku: product.sku,
+          product_name: product.product_name,
+          local_quantity: product.quantity,
+          shopify_quantity: 0,
+          status: 'error',
+          message: error.message
+        })
       }
     }
 
-    // Update store connection status
-    const connectionSuccessful = successCount > 0
-    await query('UPDATE stores SET connected = $1 WHERE id = $2', [connectionSuccessful, storeId])
-    
-    res.status(200).json({ 
-      success: true, 
-      message: `Sync test completed: ${successCount} successful, ${errorCount} failed`,
-      store: {
-        id: store.id,
-        name: store.store_name,
-        domain: store.store_domain,
-        connected: connectionSuccessful
-      },
-      results: syncResults,
+    res.status(200).json({
+      success: true,
+      message: 'Sync test completed',
       summary: {
         total_products_tested: products.length,
         successful: successCount,
         failed: errorCount,
-        connection_status: connectionSuccessful ? 'Connected' : 'Failed'
-      }
+        store_name: store.store_name
+      },
+      results
     })
   } catch (error) {
-    console.error('Sync test error:', error)
-    
-    // Handle authentication errors
-    if (error.message === 'No token provided' || error.message === 'Authentication failed') {
-      return res.status(401).json({ message: 'Authentication required' })
-    }
-    
-    res.status(500).json({ message: 'Failed to test sync: ' + error.message })
+    console.error('Error testing sync:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Failed to test sync',
+      error: error.message
+    })
   }
 }

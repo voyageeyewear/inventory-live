@@ -84,14 +84,50 @@ export default async function handler(req, res) {
       })
     }
 
+    // Consolidate duplicate SKUs by summing quantities
+    const consolidatedData = {}
+    const duplicateInfo = {}
+    
+    csvData.forEach(row => {
+      const sku = row.sku.toUpperCase() // Normalize SKU to uppercase for comparison
+      
+      if (consolidatedData[sku]) {
+        // Track duplicate info for reporting
+        if (!duplicateInfo[sku]) {
+          duplicateInfo[sku] = {
+            count: 2,
+            quantities: [consolidatedData[sku].quantity, row.quantity],
+            originalTotal: consolidatedData[sku].quantity
+          }
+        } else {
+          duplicateInfo[sku].count++
+          duplicateInfo[sku].quantities.push(row.quantity)
+        }
+        
+        // Sum the quantities
+        consolidatedData[sku].quantity += row.quantity
+      } else {
+        consolidatedData[sku] = {
+          sku: row.sku, // Keep original case for display
+          quantity: row.quantity
+        }
+      }
+    })
+
+    // Convert back to array
+    const processedData = Object.values(consolidatedData)
+
     const results = {
       processed: 0,
       errors: [],
-      success: []
+      success: [],
+      duplicates: duplicateInfo,
+      originalRows: csvData.length,
+      consolidatedRows: processedData.length
     }
 
-    // Process each row
-    for (const row of csvData) {
+    // Process each consolidated row
+    for (const row of processedData) {
       try {
         // Find product by SKU
         const productResult = await query(
@@ -132,7 +168,16 @@ export default async function handler(req, res) {
         ])
 
         results.processed++
-        results.success.push(`${row.sku}: +${row.quantity} (${previousQuantity} → ${newQuantity})`)
+        
+        // Check if this SKU had duplicates
+        const skuKey = row.sku.toUpperCase()
+        const duplicateInfo = results.duplicates[skuKey]
+        
+        if (duplicateInfo) {
+          results.success.push(`${row.sku}: +${row.quantity} (${previousQuantity} → ${newQuantity}) [Consolidated from ${duplicateInfo.count} entries: ${duplicateInfo.quantities.join('+')}=${row.quantity}]`)
+        } else {
+          results.success.push(`${row.sku}: +${row.quantity} (${previousQuantity} → ${newQuantity})`)
+        }
       } catch (error) {
         console.error(`Error processing ${row.sku}:`, error)
         results.errors.push(`${row.sku}: ${error.message}`)

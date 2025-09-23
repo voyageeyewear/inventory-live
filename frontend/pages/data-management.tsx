@@ -84,7 +84,7 @@ interface SystemHealth {
 }
 
 export default function DataManagement() {
-  const { user, isFullyAuthenticated } = useAuth()
+  const { user, token, isFullyAuthenticated } = useAuth()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<DatabaseStats | null>(null)
   const [health, setHealth] = useState<SystemHealth | null>(null)
@@ -204,7 +204,11 @@ export default function DataManagement() {
   const handleFullBackup = async () => {
     setExporting(true)
     try {
-      const response = await axios.get('/api/data-management/full-backup')
+      const response = await axios.get('/api/data-management/full-backup', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
       
       if (response.data.success) {
         const backupData = response.data.backup
@@ -236,19 +240,42 @@ export default function DataManagement() {
       'mobile_activities': 'Mobile Activities',
       'today_sync': "Today's Sync Data",
       'all_histories': 'ALL History Data',
-      'sync_status': 'Product Sync Status'
+      'sync_status': 'Product Sync Status',
+      'all_products': 'ALL PRODUCTS'
     }
 
-    const confirmMessage = `⚠️ RESET ${typeNames[type]?.toUpperCase()}\n\n` +
+    let confirmMessage = `⚠️ RESET ${typeNames[type]?.toUpperCase()}\n\n` +
       `This will permanently delete ${typeNames[type]?.toLowerCase()} from the database.\n` +
       `This action CANNOT be undone!\n\n` +
       `Are you absolutely sure you want to continue?`
 
-    if (!window.confirm(confirmMessage)) return
+    // Special warning for deleting all products
+    if (type === 'all_products') {
+      confirmMessage = `🚨 DANGER: DELETE ALL PRODUCTS 🚨\n\n` +
+        `This will PERMANENTLY DELETE ALL ${stats?.products.total || 0} PRODUCTS from your inventory!\n` +
+        `• All product data will be lost\n` +
+        `• All SKUs, names, prices, quantities will be deleted\n` +
+        `• This will break your entire inventory system\n` +
+        `• Related stock logs will become orphaned\n\n` +
+        `THIS ACTION CANNOT BE UNDONE!\n\n` +
+        `Type "DELETE ALL PRODUCTS" to confirm:`
+      
+      const userInput = window.prompt(confirmMessage)
+      if (userInput !== 'DELETE ALL PRODUCTS') {
+        toast.error('Operation cancelled - confirmation text did not match')
+        return
+      }
+    } else {
+      if (!window.confirm(confirmMessage)) return
+    }
 
     setResetting(true)
     try {
-      const response = await axios.post('/api/data-management/reset-histories', { type })
+      const response = await axios.post('/api/data-management/reset-histories', { type }, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
       
       if (response.data.success) {
         toast.success(`✅ ${response.data.message}`)
@@ -279,7 +306,11 @@ export default function DataManagement() {
 
     setCleaning(true)
     try {
-      const response = await axios.post('/api/data-management/cleanup-data', { type, days })
+      const response = await axios.post('/api/data-management/cleanup-data', { type, days }, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
       
       if (response.data.success) {
         toast.success(`✅ ${response.data.message}`)
@@ -376,14 +407,38 @@ export default function DataManagement() {
     try {
       const text = await file.text()
       const data = JSON.parse(text)
-      
+
       // Handle different import formats
       if (data.data && data.data.products) {
         // Full backup format
-        toast('Full backup detected - this feature is coming soon', { icon: 'ℹ️' })
+        const importResponse = await axios.post('/api/data-management/import-backup', data, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        })
+        
+        if (importResponse.data.success) {
+          toast.success(`✅ Full backup imported successfully`)
+          fetchData() // Refresh stats
+        } else {
+          toast.error('❌ Failed to import backup: ' + importResponse.data.message)
+        }
       } else if (Array.isArray(data)) {
         // Simple products array
-        toast('Product import feature is coming soon', { icon: 'ℹ️' })
+        const importResponse = await axios.post('/api/products/import', { products: data }, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        })
+        
+        if (importResponse.data.success) {
+          toast.success(`✅ Products imported successfully`)
+          fetchData() // Refresh stats
+        } else {
+          toast.error('❌ Failed to import products: ' + importResponse.data.message)
+        }
       } else {
         toast.error('Unsupported file format')
       }
@@ -444,27 +499,27 @@ export default function DataManagement() {
 
   return (
     <ProtectedRoute requiredPermission="viewProducts">
-      <Layout>
-        <div className="space-y-6">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
+    <Layout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
               <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-                <Database className="h-8 w-8 text-purple-600" />
-                Data Management
-              </h1>
+              <Database className="h-8 w-8 text-purple-600" />
+              Data Management
+            </h1>
               <p className="text-gray-600 mt-1">Monitor, backup, and manage your inventory system data</p>
-            </div>
-            
-            <button
-              onClick={fetchData}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 transition-colors"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
           </div>
+          
+          <button
+            onClick={fetchData}
+            disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 transition-colors"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
 
           {/* Permission Warning */}
           {!isAdmin && (
@@ -691,44 +746,44 @@ export default function DataManagement() {
                       <span className="text-gray-900 font-medium">Total Scans:</span>
                       <span className="font-bold">{formatNumber(stats.scanLogs.total)}</span>
                     </div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
           {activeTab === 'backup' && (
             <div className="space-y-6">
               {/* Export Options */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white p-6 rounded-lg shadow border">
-                  <div className="flex items-center mb-4">
-                    <Download className="h-6 w-6 text-blue-600" />
+              <div className="bg-white p-6 rounded-lg shadow border">
+                <div className="flex items-center mb-4">
+                  <Download className="h-6 w-6 text-blue-600" />
                     <h3 className="text-lg font-medium text-gray-900 ml-2">Export Products</h3>
-                  </div>
-                  <p className="text-gray-600 mb-4">
+                </div>
+                <p className="text-gray-600 mb-4">
                     Export all product data including inventory levels, categories, and pricing information.
-                  </p>
-                  <div className="space-y-2 mb-4 text-sm text-gray-600">
-                    <div className="flex justify-between">
+                </p>
+                <div className="space-y-2 mb-4 text-sm text-gray-600">
+                  <div className="flex justify-between">
                       <span>Total Products:</span>
                       <span className="font-medium">{formatNumber(stats?.products.total || 0)}</span>
-                    </div>
-                    <div className="flex justify-between">
+                  </div>
+                  <div className="flex justify-between">
                       <span>Active Products:</span>
                       <span className="font-medium">{formatNumber(stats?.products.active || 0)}</span>
-                    </div>
-                    <div className="flex justify-between">
+                  </div>
+                  <div className="flex justify-between">
                       <span>Categories:</span>
                       <span className="font-medium">{formatNumber(stats?.products.categories || 0)}</span>
-                    </div>
                   </div>
-                  <button
+                </div>
+                <button
                     onClick={() => handleExportData('products')}
-                    disabled={exporting}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
-                  >
-                    <Download className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
+                  disabled={exporting}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+                >
+                  <Download className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
                     {exporting ? 'Exporting...' : 'Export Products'}
                   </button>
                 </div>
@@ -762,7 +817,7 @@ export default function DataManagement() {
                   >
                     <Archive className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
                     {exporting ? 'Creating Backup...' : 'Full System Backup'}
-                  </button>
+                </button>
                 </div>
               </div>
 
@@ -809,11 +864,11 @@ export default function DataManagement() {
               {/* Cleanup Options */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white p-6 rounded-lg shadow border">
-                  <div className="flex items-center mb-4">
+                <div className="flex items-center mb-4">
                     <Trash2 className="h-6 w-6 text-orange-600" />
                     <h3 className="text-lg font-medium text-gray-900 ml-2">Clean Old Logs</h3>
-                  </div>
-                  <p className="text-gray-600 mb-4">
+                </div>
+                <p className="text-gray-600 mb-4">
                     Remove old stock movement logs to free up database space. Logs older than 90 days will be deleted.
                   </p>
                   <div className="space-y-2 mb-4 text-sm text-gray-600">
@@ -852,18 +907,18 @@ export default function DataManagement() {
                     <div className="flex justify-between">
                       <span>Last 7 Days:</span>
                       <span className="font-medium">{formatNumber(stats?.scanLogs.last7Days || 0)}</span>
-                    </div>
                   </div>
-                  <button
+                </div>
+                <button
                     onClick={() => handleCleanupData('old_scans', 30)}
                     disabled={cleaning}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400"
-                  >
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400"
+                >
                     <Eye className={`h-4 w-4 ${cleaning ? 'animate-pulse' : ''}`} />
                     {cleaning ? 'Cleaning...' : 'Clean Scan History (30+ days)'}
-                  </button>
-                </div>
+                </button>
               </div>
+            </div>
 
               {/* System Information */}
               <div className="bg-white rounded-lg shadow border">
@@ -909,7 +964,7 @@ export default function DataManagement() {
                           <div key={role} className="flex justify-between">
                             <span className="text-gray-600 capitalize">{role}s:</span>
                             <span className="font-medium">{formatNumber(count)}</span>
-                          </div>
+                        </div>
                         ))}
                       </div>
                     </div>
@@ -1074,8 +1129,8 @@ export default function DataManagement() {
                     <div className="flex justify-between">
                       <span>Products:</span>
                       <span className="font-medium">{formatNumber(stats?.products.total || 0)}</span>
-                    </div>
-                  </div>
+                          </div>
+                        </div>
                   <button
                     onClick={() => handleResetHistories('sync_status')}
                     disabled={resetting || user?.role !== 'admin'}
@@ -1084,8 +1139,8 @@ export default function DataManagement() {
                     <Settings className={`h-4 w-4 ${resetting ? 'animate-pulse' : ''}`} />
                     {resetting ? 'Resetting...' : 'Reset Sync Status'}
                   </button>
-                </div>
-              </div>
+                          </div>
+                        </div>
 
               {/* Danger Zone */}
               <div className="bg-red-50 border-2 border-red-200 rounded-lg p-6">
@@ -1094,10 +1149,11 @@ export default function DataManagement() {
                   <h3 className="text-lg font-medium text-red-800 ml-2">⚠️ Danger Zone</h3>
                 </div>
                 <p className="text-red-700 mb-6">
-                  These operations will permanently delete ALL history data. This action cannot be undone!
+                  These operations will permanently delete ALL data from your system. This action cannot be undone!<br/>
+                  <strong>⚠️ WARNING:</strong> "DELETE ALL PRODUCTS" will remove your entire inventory!
                 </p>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <button
                     onClick={() => handleResetHistories('all_histories')}
                     disabled={resetting || user?.role !== 'admin'}
@@ -1105,6 +1161,15 @@ export default function DataManagement() {
                   >
                     <Trash2 className={`h-5 w-5 ${resetting ? 'animate-pulse' : ''}`} />
                     {resetting ? 'Resetting...' : 'RESET ALL HISTORIES'}
+                  </button>
+                  
+                  <button
+                    onClick={() => handleResetHistories('all_products')}
+                    disabled={resetting || user?.role !== 'admin'}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-red-800 text-white rounded-md hover:bg-red-900 disabled:bg-gray-400 font-medium border-2 border-red-300"
+                  >
+                    <Package className={`h-5 w-5 ${resetting ? 'animate-pulse' : ''}`} />
+                    {resetting ? 'Deleting...' : '🚨 DELETE ALL PRODUCTS'}
                   </button>
                   
                   <button
@@ -1116,8 +1181,8 @@ export default function DataManagement() {
                     {cleaning ? 'Optimizing...' : 'Optimize Database'}
                   </button>
                 </div>
-              </div>
-            </div>
+                        </div>
+                      </div>
           )}
 
           {activeTab === 'analytics' && (
@@ -1151,9 +1216,9 @@ export default function DataManagement() {
                 </div>
               </div>
             </div>
-          )}
-        </div>
-      </Layout>
+        )}
+      </div>
+    </Layout>
     </ProtectedRoute>
   )
 }

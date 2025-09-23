@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import Layout from '../components/Layout'
 import ProtectedRoute from '../components/ProtectedRoute'
-import { Upload, TrendingDown, Clock, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react'
+import { Upload, TrendingDown, Clock, RefreshCw, CheckCircle, AlertCircle, Download, FileText, BarChart3, Package } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
 
@@ -19,12 +19,24 @@ interface StockLog {
   product_name: string
 }
 
+interface UploadResults {
+  processed: number
+  errors: string[]
+  success: string[]
+  duplicates?: { [key: string]: { count: number, quantities: number[] } }
+  originalRows?: number
+  consolidatedRows?: number
+  totalRows?: number
+  fileName?: string
+  uploadTime?: string
+}
+
 export default function StockOut() {
   const { user, isFullyAuthenticated } = useAuth()
   const [stockLogs, setStockLogs] = useState<StockLog[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
-  const [uploadResults, setUploadResults] = useState<any>(null)
+  const [uploadResults, setUploadResults] = useState<UploadResults | null>(null)
 
   useEffect(() => {
     if (isFullyAuthenticated) {
@@ -68,20 +80,92 @@ export default function StockOut() {
       
       if (response.data.success) {
         toast.success(`Successfully processed ${response.data.count} stock-out entries`)
-        setUploadResults(response.data.results)
+        const results = {
+          ...response.data.results,
+          fileName: file.name,
+          uploadTime: new Date().toISOString(),
+          totalRows: response.data.results.originalRows || (response.data.results.processed + response.data.results.errors.length)
+        }
+        setUploadResults(results)
         fetchStockLogs()
       }
     } catch (error: any) {
       console.error('Upload error:', error)
       toast.error(error.response?.data?.message || 'Upload failed')
       if (error.response?.data?.results) {
-        setUploadResults(error.response.data.results)
+        const results = {
+          ...error.response.data.results,
+          fileName: file.name,
+          uploadTime: new Date().toISOString(),
+          totalRows: error.response.data.results.originalRows || ((error.response.data.results.processed || 0) + (error.response.data.results.errors?.length || 0))
+        }
+        setUploadResults(results)
       }
     } finally {
       setUploading(false)
       // Reset file input
       event.target.value = ''
     }
+  }
+
+  const exportReport = () => {
+    if (!uploadResults) return
+
+    const csvContent = [
+      ['Stock-Out Report'],
+      ['File Name:', uploadResults.fileName || 'Unknown'],
+      ['Upload Time:', uploadResults.uploadTime ? new Date(uploadResults.uploadTime).toLocaleString() : 'Unknown'],
+      ['Total Rows Processed:', uploadResults.totalRows?.toString() || '0'],
+      ['Original Rows:', uploadResults.originalRows?.toString() || '0'],
+      ['Consolidated Rows:', uploadResults.consolidatedRows?.toString() || '0'],
+      ['Successfully Updated:', uploadResults.processed.toString()],
+      ['Errors:', uploadResults.errors.length.toString()],
+      [''],
+      ['Successfully Updated Products:'],
+      ['SKU', 'Quantity Change', 'Stock Movement'],
+      ...uploadResults.success.map(item => {
+        const parts = item.split(': ')
+        const sku = parts[0]
+        const details = parts[1] || ''
+        return [sku, details, details]
+      }),
+      [''],
+      ['Errors:'],
+      ['SKU/Issue', 'Error Description'],
+      ...uploadResults.errors.map(error => {
+        const parts = error.split(': ')
+        return [parts[0] || '', parts[1] || error]
+      })
+    ]
+
+    // Add consolidation details if available
+    if (uploadResults.duplicates && Object.keys(uploadResults.duplicates).length > 0) {
+      csvContent.push(
+        [''],
+        ['Consolidated Duplicate SKUs:'],
+        ['SKU', 'Duplicate Count', 'Individual Quantities', 'Total Quantity'],
+        ...Object.entries(uploadResults.duplicates).map(([sku, info]) => [
+          sku,
+          info.count.toString(),
+          info.quantities.join(' + '),
+          info.quantities.reduce((a, b) => a + b, 0).toString()
+        ])
+      )
+    }
+
+    const csvString = csvContent.map(row => 
+      row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')
+    ).join('\n')
+
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `stock-out-report-${new Date().toISOString().split('T')[0]}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
   return (
@@ -147,37 +231,153 @@ SKU125,2`}
           </div>
         </div>
 
-        {/* Upload Results */}
+        {/* Upload Results Report */}
         {uploadResults && (
           <div className="bg-white rounded-lg shadow border">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">Upload Results</h3>
-            </div>
-            <div className="p-6 space-y-4">
-              {/* Success Summary */}
-              {uploadResults.processed > 0 && (
-                <div className="flex items-center gap-2 text-green-700 bg-green-50 p-3 rounded-lg">
-                  <CheckCircle className="h-5 w-5" />
-                  <span className="font-medium">{uploadResults.processed} products updated successfully</span>
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <FileText className="h-6 w-6 text-blue-600" />
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">Stock-Out Processing Report</h3>
+                  <p className="text-sm text-gray-500">
+                    {uploadResults.fileName} • {uploadResults.uploadTime ? new Date(uploadResults.uploadTime).toLocaleString() : 'Just now'}
+                  </p>
                 </div>
-              )}
+              </div>
+              <button
+                onClick={exportReport}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Export Report
+              </button>
+            </div>
+            
+            <div className="p-6">
+              {/* Summary Statistics */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <div className="flex items-center gap-3">
+                    <BarChart3 className="h-8 w-8 text-blue-600" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-800">Total Rows</p>
+                      <p className="text-2xl font-bold text-blue-900">{uploadResults.totalRows || 0}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-green-50 rounded-lg p-4">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="h-8 w-8 text-green-600" />
+                    <div>
+                      <p className="text-sm font-medium text-green-800">Successful</p>
+                      <p className="text-2xl font-bold text-green-900">{uploadResults.processed}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-red-50 rounded-lg p-4">
+                  <div className="flex items-center gap-3">
+                    <AlertCircle className="h-8 w-8 text-red-600" />
+                    <div>
+                      <p className="text-sm font-medium text-red-800">Errors</p>
+                      <p className="text-2xl font-bold text-red-900">{uploadResults.errors.length}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-purple-50 rounded-lg p-4">
+                  <div className="flex items-center gap-3">
+                    <Package className="h-8 w-8 text-purple-600" />
+                    <div>
+                      <p className="text-sm font-medium text-purple-800">Success Rate</p>
+                      <p className="text-2xl font-bold text-purple-900">
+                        {uploadResults.totalRows ? Math.round((uploadResults.processed / uploadResults.totalRows) * 100) : 0}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-              {/* Errors Summary */}
-              {uploadResults.errors && uploadResults.errors.length > 0 && (
-                <div className="flex items-center gap-2 text-red-700 bg-red-50 p-3 rounded-lg">
-                  <AlertCircle className="h-5 w-5" />
-                  <span className="font-medium">{uploadResults.errors.length} errors encountered</span>
+              {/* Consolidation Summary */}
+              {uploadResults.duplicates && Object.keys(uploadResults.duplicates).length > 0 && (
+                <div className="mb-6">
+                  <div className="bg-yellow-50 rounded-lg border border-yellow-200 p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Package className="h-5 w-5 text-yellow-600" />
+                      <h4 className="text-lg font-semibold text-gray-900">Duplicate SKUs Consolidated</h4>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-yellow-800">{uploadResults.originalRows || 0}</p>
+                        <p className="text-sm text-yellow-700">Original Rows</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-yellow-800">{uploadResults.consolidatedRows || 0}</p>
+                        <p className="text-sm text-yellow-700">After Consolidation</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-yellow-800">{Object.keys(uploadResults.duplicates).length}</p>
+                        <p className="text-sm text-yellow-700">SKUs with Duplicates</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <h5 className="font-medium text-gray-900">Consolidated SKUs:</h5>
+                      {Object.entries(uploadResults.duplicates).map(([sku, info]) => (
+                        <div key={sku} className="bg-white rounded p-3 border border-yellow-200">
+                          <p className="font-medium text-gray-900">{sku}</p>
+                          <p className="text-sm text-gray-600">
+                            {info.count} entries consolidated: {info.quantities.join(' + ')} = {info.quantities.reduce((a, b) => a + b, 0)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
 
               {/* Success Details */}
               {uploadResults.success && uploadResults.success.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-900 mb-2">✅ Successfully Updated:</h4>
-                  <div className="bg-green-50 rounded-lg p-3 max-h-40 overflow-y-auto">
-                    {uploadResults.success.map((item: string, index: number) => (
-                      <div key={index} className="text-sm text-green-800">{item}</div>
-                    ))}
+                <div className="mb-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                    <h4 className="text-lg font-semibold text-gray-900">Successfully Updated Products ({uploadResults.processed})</h4>
+                  </div>
+                  <div className="bg-green-50 rounded-lg border border-green-200">
+                    <div className="max-h-64 overflow-y-auto">
+                      <table className="min-w-full">
+                        <thead className="bg-green-100 sticky top-0">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-green-800 uppercase tracking-wider">SKU</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-green-800 uppercase tracking-wider">Quantity Removed</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-green-800 uppercase tracking-wider">Stock Movement</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-green-200">
+                          {uploadResults.success.map((item: string, index: number) => {
+                            const parts = item.split(': ')
+                            const sku = parts[0]
+                            const details = parts[1] || ''
+                            const quantityMatch = details.match(/-(\d+)/)
+                            const movementMatch = details.match(/\((\d+) → (\d+)\)/)
+                            
+                            return (
+                              <tr key={index} className="hover:bg-green-75">
+                                <td className="px-4 py-2 text-sm font-medium text-green-900">{sku}</td>
+                                <td className="px-4 py-2 text-sm text-green-800">
+                                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                    -{quantityMatch ? quantityMatch[1] : 'N/A'}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 text-sm text-green-800">
+                                  {movementMatch ? `${movementMatch[1]} → ${movementMatch[2]}` : details}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
@@ -185,12 +385,44 @@ SKU125,2`}
               {/* Error Details */}
               {uploadResults.errors && uploadResults.errors.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-medium text-gray-900 mb-2">❌ Errors:</h4>
-                  <div className="bg-red-50 rounded-lg p-3 max-h-40 overflow-y-auto">
-                    {uploadResults.errors.map((error: string, index: number) => (
-                      <div key={index} className="text-sm text-red-800">{error}</div>
-                    ))}
+                  <div className="flex items-center gap-2 mb-3">
+                    <AlertCircle className="h-5 w-5 text-red-600" />
+                    <h4 className="text-lg font-semibold text-gray-900">Errors Encountered ({uploadResults.errors.length})</h4>
                   </div>
+                  <div className="bg-red-50 rounded-lg border border-red-200">
+                    <div className="max-h-64 overflow-y-auto">
+                      <table className="min-w-full">
+                        <thead className="bg-red-100 sticky top-0">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-red-800 uppercase tracking-wider">SKU/Issue</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-red-800 uppercase tracking-wider">Error Description</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-red-200">
+                          {uploadResults.errors.map((error: string, index: number) => {
+                            const parts = error.split(': ')
+                            const sku = parts[0] || 'Unknown'
+                            const description = parts[1] || error
+                            
+                            return (
+                              <tr key={index} className="hover:bg-red-75">
+                                <td className="px-4 py-2 text-sm font-medium text-red-900">{sku}</td>
+                                <td className="px-4 py-2 text-sm text-red-800">{description}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* No Results */}
+              {uploadResults.processed === 0 && uploadResults.errors.length === 0 && (
+                <div className="text-center py-8">
+                  <AlertCircle className="mx-auto h-12 w-12 text-gray-400" />
+                  <p className="mt-2 text-gray-500">No data was processed from the uploaded file.</p>
                 </div>
               )}
             </div>

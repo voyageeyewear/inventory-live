@@ -51,6 +51,7 @@ interface Product {
 
 interface DashboardStats {
   totalProducts: number
+  totalStores: number
   connectedStores: number
   todaysSyncs: number
   stockChanges: number
@@ -415,6 +416,7 @@ export default function ProductsEnhanced() {
       // Calculate statistics
       const activeProducts = allProducts.filter((p: Product) => p.is_active).length
       const inactiveProducts = allProducts.filter((p: Product) => !p.is_active).length
+      const totalStores = allStores.length
       const connectedStores = allStores.filter((s: any) => s.connected).length
       const lowStockItems = allProducts.filter((p: Product) => p.quantity < 10).length
       
@@ -437,6 +439,7 @@ export default function ProductsEnhanced() {
 
       setStats({
         totalProducts: allProducts.length,
+        totalStores,
         connectedStores,
         todaysSyncs,
         stockChanges,
@@ -508,13 +511,13 @@ export default function ProductsEnhanced() {
     const modifiedCount = productsNeedingSync.length
     const totalCount = filteredProducts.length
     
-    const confirmMessage = `🔄 SYNC TO SPECIFIC STORE\n\n` +
+    const confirmMessage = `🔄 SMART SYNC TO SPECIFIC STORE\n\n` +
       `Store: ${storeInfo?.store_name || 'Unknown'}\n` +
-      `Products to sync: ${productsToSync.length} (modified products only)\n` +
-      `Modified: ${modifiedCount} | Up to date: ${totalCount - modifiedCount}\n\n` +
+      `⚡ Smart Mode: Only syncing ${productsToSync.length} modified products\n` +
+      `💰 Cost Savings: Skipping ${totalCount - modifiedCount} up-to-date products\n\n` +
       `This will update inventory levels in the selected Shopify store.\n` +
-      `✅ Smart sync enabled - only syncing products that need updates!\n\n` +
-      `Are you sure you want to continue?`
+      `Smart Sync saves time & API costs by only syncing what's changed!\n\n` +
+      `Continue with smart sync?`
 
     if (!window.confirm(confirmMessage)) {
       return
@@ -607,15 +610,15 @@ export default function ProductsEnhanced() {
     const totalCount = filteredProducts.length
     const totalOperations = stores.length * productsToSync.length
     
-    const confirmMessage = `🚀 SYNC TO ALL STORES\n\n` +
+    const confirmMessage = `🚀 SMART SYNC TO ALL STORES\n\n` +
       `Connected stores: ${stores.length}\n` +
-      `Products to sync: ${productsToSync.length} (modified products only)\n` +
-      `Modified: ${modifiedCount} | Up to date: ${totalCount - modifiedCount}\n` +
+      `⚡ Smart Mode: Only syncing ${productsToSync.length} modified products\n` +
+      `💰 Cost Savings: Skipping ${totalCount - modifiedCount} up-to-date products\n` +
       `Total operations: ${totalOperations}\n\n` +
       `This will update inventory levels across all connected Shopify stores.\n` +
-      `✅ Smart sync enabled - only syncing products that need updates!\n` +
+      `Smart Sync saves time & API costs by only syncing what's changed!\n` +
       `Estimated time: ${Math.ceil(totalOperations / 10)} seconds\n\n` +
-      `Are you sure you want to continue?`
+      `Continue with smart sync?`
 
     if (!window.confirm(confirmMessage)) {
       return
@@ -877,7 +880,7 @@ export default function ProductsEnhanced() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">Connected Stores</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.connectedStores}/2</p>
+                    <p className="text-2xl font-bold text-gray-900">{stats.connectedStores}/{stats.totalStores}</p>
                   </div>
                   <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
                     <Store className="h-6 w-6 text-green-600" />
@@ -1100,7 +1103,12 @@ export default function ProductsEnhanced() {
                     className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
                   >
                     <Store className="h-4 w-4" />
-                    Sync by Store
+                    <div className="flex flex-col items-start">
+                      <span className="text-sm font-medium">Sync by Store</span>
+                      <span className="text-xs opacity-90">
+                        ⚡ Smart: {productsNeedingSync.length} modified
+                      </span>
+                    </div>
                   </button>
                   
                   {showStoreSelector && (
@@ -1149,13 +1157,34 @@ export default function ProductsEnhanced() {
                   className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
                 >
                   <RefreshCw className={`h-4 w-4 ${bulkSyncing ? 'animate-spin' : ''}`} />
-                  {bulkSyncing ? 'Syncing...' : 'Sync All Stores'}
+                  <div className="flex flex-col items-start">
+                    <span className="text-sm font-medium">
+                      {bulkSyncing ? 'Syncing...' : 'Sync All Stores'}
+                    </span>
+                    {!bulkSyncing && (
+                      <span className="text-xs opacity-90">
+                        ⚡ Smart: {productsNeedingSync.length} modified
+                      </span>
+                    )}
+                  </div>
                 </button>
 
                 {stores.length === 0 && (
                   <p className="text-sm text-gray-500 italic">
                     No connected stores. <a href="/settings" className="text-blue-600 hover:underline">Connect stores</a> to enable sync.
                   </p>
+                )}
+
+                {/* Smart Sync Info */}
+                {stores.length > 0 && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
+                    <Zap className="h-4 w-4 text-blue-600" />
+                    <span>
+                      <strong>Smart Sync:</strong> Only syncs {productsNeedingSync.length} modified products 
+                      {productsNeedingSync.length === 0 ? ' (all up to date!)' : ` out of ${products.length} total`}
+                      {productsNeedingSync.length > 0 && ' - saves time & API costs!'}
+                    </span>
+                  </div>
                 )}
               </div>
             </div>

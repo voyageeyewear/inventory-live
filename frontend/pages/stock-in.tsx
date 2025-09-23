@@ -19,12 +19,24 @@ interface StockLog {
   product_name: string
 }
 
+interface UploadResults {
+  processed: number
+  errors: string[]
+  success: string[]
+  duplicates?: { [key: string]: { count: number, quantities: number[] } }
+  originalRows?: number
+  consolidatedRows?: number
+  totalRows?: number
+  fileName?: string
+  uploadTime?: string
+}
+
 export default function StockIn() {
   const { user, isFullyAuthenticated } = useAuth()
   const [stockLogs, setStockLogs] = useState<StockLog[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
-  const [uploadResults, setUploadResults] = useState<any>(null)
+  const [uploadResults, setUploadResults] = useState<UploadResults | null>(null)
 
   useEffect(() => {
     if (isFullyAuthenticated) {

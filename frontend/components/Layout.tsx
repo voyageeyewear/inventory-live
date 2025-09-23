@@ -21,7 +21,9 @@ import {
   Clock,
   Shield,
   Smartphone,
-  History
+  History,
+  GitCompare,
+  AlertTriangle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
@@ -41,6 +43,9 @@ const allNavigation = [
   { name: 'Mobile Users', href: '/mobile-users', icon: UserIcon, permission: 'viewProducts' },
   { name: 'Scan History', href: '/scan-history', icon: History, permission: 'viewProducts' },
   { name: 'Data Management', href: '/data-management', icon: Database, permission: 'viewProducts' },
+  { name: 'Shopify vs Local Inventory', href: '/shopify-inventory-comparison', icon: GitCompare, permission: 'viewProducts' },
+  { name: 'Most Selling Products', href: '/most-selling-products', icon: TrendingUp, permission: 'viewProducts' },
+  { name: 'Low Quantity Alert', href: '/low-quantity-alert', icon: AlertTriangle, permission: 'viewProducts' },
   { name: 'Sync Activity', href: '/sync-activity', icon: Activity, permission: 'viewProducts' },
   { name: 'Reports', href: '/reports', icon: FileText, permission: 'viewProducts' },
   { name: 'User Management', href: '/user-management', icon: Users, permission: 'viewProducts' },

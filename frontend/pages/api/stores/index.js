@@ -1,145 +1,97 @@
 import { query } from '../../../lib/postgres'
-import jwt from 'jsonwebtoken'
-
-// Middleware to authenticate token
-const authenticateToken = async (req) => {
-  const token = req.headers.authorization?.replace('Bearer ', '')
-  
-  if (!token) {
-    throw new Error('No token provided')
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-key-2024-production')
-    
-    const userResult = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.id])
-
-    if (userResult.rows.length === 0) {
-      throw new Error('Invalid token or user inactive')
-    }
-
-    return userResult.rows[0]
-  } catch (error) {
-    throw new Error('Authentication failed')
-  }
-}
 
 export default async function handler(req, res) {
-  const { method } = req
+  if (req.method === 'GET') {
+    try {
+      // Get all stores
+      const result = await query(`
+        SELECT id, store_name, store_domain, shopify_domain, access_token, connected, created_at, updated_at
+        FROM stores 
+        ORDER BY created_at DESC
+      `)
 
-  try {
-    // Authenticate user
-    const user = await authenticateToken(req)
-
-    switch (method) {
-      case 'GET':
-        try {
-          const result = await query(
-            'SELECT * FROM stores WHERE is_active = true ORDER BY name ASC'
-          )
-          const stores = result.rows
-          
-          res.status(200).json(stores)
-        } catch (error) {
-          console.error('Get stores error:', error)
-          res.status(500).json({ message: 'Failed to fetch stores' })
-        }
-        break
-
-      case 'POST':
-        try {
-          const { store_name, store_domain, access_token, name, address, phone, email, manager } = req.body
-          
-          // Handle both Shopify store format and regular store format
-          const storeName = store_name || name
-          
-          if (!storeName) {
-            return res.status(400).json({ message: 'Store name is required' })
-          }
-
-          // For Shopify stores, also require domain and access token
-          if (store_domain && !access_token) {
-            return res.status(400).json({ message: 'Access token is required for Shopify stores' })
-          }
-
-          // Check if store already exists by name or domain
-          let existingStoreResult
-          if (store_domain) {
-            existingStoreResult = await query(
-              'SELECT id FROM stores WHERE LOWER(store_domain) = LOWER($1) OR LOWER(name) = LOWER($2)',
-              [store_domain, storeName]
-            )
-          } else {
-            existingStoreResult = await query(
-              'SELECT id FROM stores WHERE LOWER(name) = LOWER($1)',
-              [storeName]
-            )
-          }
-          
-          if (existingStoreResult.rows.length > 0) {
-            return res.status(400).json({ message: 'Store with this name or domain already exists' })
-          }
-
-          // Test Shopify connection if it's a Shopify store
-          let connected = false
-          if (store_domain && access_token) {
-            try {
-              // Simple test to verify the access token works
-              const testResponse = await fetch(`https://${store_domain}/admin/api/2023-10/shop.json`, {
-                headers: {
-                  'X-Shopify-Access-Token': access_token,
-                  'Content-Type': 'application/json'
-                }
-              })
-              
-              if (testResponse.ok) {
-                connected = true
-              } else {
-                console.log('Shopify connection test failed:', testResponse.status)
-              }
-            } catch (testError) {
-              console.log('Shopify connection test error:', testError.message)
-            }
-          }
-
-          const result = await query(`
-            INSERT INTO stores (name, store_name, store_domain, access_token, connected, address, phone, email, manager_id, is_active, created_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            RETURNING *
-          `, [
-            storeName, 
-            storeName, 
-            store_domain || null, 
-            access_token || null, 
-            connected,
-            address || '', 
-            phone || '', 
-            email || '', 
-            manager || null, 
-            true, 
-            user.id
-          ])
-          
-          const store = result.rows[0]
-          
-          res.status(201).json({ 
-            success: true, 
-            message: connected ? 'Shopify store connected successfully' : 'Store added successfully', 
-            store,
-            connected 
-          })
-        } catch (error) {
-          console.error('Create store error:', error)
-          res.status(500).json({ message: 'Failed to create store: ' + error.message })
-        }
-        break
-
-      default:
-        res.setHeader('Allow', ['GET', 'POST'])
-        res.status(405).end(`Method ${method} Not Allowed`)
+      res.status(200).json(result.rows)
+    } catch (error) {
+      console.error('Error fetching stores:', error)
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to fetch stores',
+        error: error.message 
+      })
     }
-  } catch (error) {
-    console.error('Authentication error:', error)
-    res.status(401).json({ message: 'Authentication required' })
+  } else if (req.method === 'POST') {
+    try {
+      const { store_name, store_domain, access_token } = req.body
+
+      if (!store_name || !store_domain || !access_token) {
+        return res.status(400).json({
+          success: false,
+          message: 'Store name, domain, and access token are required'
+        })
+      }
+
+      // Clean up domain (remove https:// and trailing slashes)
+      const cleanDomain = store_domain.replace(/^https?:\/\//, '').replace(/\/$/, '')
+      const shopifyDomain = cleanDomain.includes('.myshopify.com') ? cleanDomain : `${cleanDomain}.myshopify.com`
+
+      // Check if store already exists
+      const existingStore = await query(
+        'SELECT id FROM stores WHERE store_domain = $1 OR shopify_domain = $2',
+        [cleanDomain, shopifyDomain]
+      )
+
+      if (existingStore.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Store with this domain already exists'
+        })
+      }
+
+      // Test connection before adding (skip for development)
+      if (!access_token.startsWith('dev_')) {
+        try {
+          const testResponse = await fetch(`https://${shopifyDomain}/admin/api/2023-10/shop.json`, {
+            headers: {
+              'X-Shopify-Access-Token': access_token,
+              'Content-Type': 'application/json'
+            }
+          })
+
+          if (!testResponse.ok) {
+            return res.status(400).json({
+              success: false,
+              message: 'Invalid access token or store domain'
+            })
+          }
+        } catch (testError) {
+          return res.status(400).json({
+            success: false,
+            message: 'Failed to connect to Shopify store. Please check your credentials.'
+          })
+        }
+      }
+
+      // Insert new store (handle both name and store_name columns)
+      const result = await query(`
+        INSERT INTO stores (name, store_name, store_domain, shopify_domain, access_token, connected, created_at, updated_at)
+        VALUES ($1, $1, $2, $3, $4, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        RETURNING *
+      `, [store_name, cleanDomain, shopifyDomain, access_token])
+
+      res.status(201).json({
+        success: true,
+        message: 'Store added successfully',
+        store: result.rows[0]
+      })
+    } catch (error) {
+      console.error('Error adding store:', error)
+      res.status(500).json({
+        success: false,
+        message: 'Failed to add store',
+        error: error.message
+      })
+    }
+  } else {
+    res.status(405).json({ message: 'Method not allowed' })
   }
 }

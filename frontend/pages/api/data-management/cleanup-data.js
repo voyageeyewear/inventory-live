@@ -69,14 +69,19 @@ export default async function handler(req, res) {
         break
 
       case 'old_mobile_activities':
-        // Delete old mobile activities
-        const mobileResult = await query(`
+        // Delete old mobile activities and transactions
+        const mobileActivitiesResult = await query(`
           DELETE FROM mobile_activities 
           WHERE created_at < $1
         `, [cutoffDate.toISOString()])
         
-        deletedCount = mobileResult.rowCount
-        message = `Deleted ${deletedCount} mobile activities older than ${days} days`
+        const mobileTransactionsResult = await query(`
+          DELETE FROM mobile_transactions 
+          WHERE created_at < $1
+        `, [cutoffDate.toISOString()])
+        
+        deletedCount = mobileActivitiesResult.rowCount + mobileTransactionsResult.rowCount
+        message = `Deleted ${deletedCount} mobile activities and transactions older than ${days} days`
         break
 
       case 'inactive_products':
@@ -99,6 +104,7 @@ export default async function handler(req, res) {
         await query('VACUUM ANALYZE stock_logs')
         await query('VACUUM ANALYZE scan_logs')
         await query('VACUUM ANALYZE mobile_activities')
+        await query('VACUUM ANALYZE mobile_transactions')
         
         message = 'Database optimization completed successfully'
         break

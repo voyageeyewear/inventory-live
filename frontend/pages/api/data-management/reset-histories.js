@@ -65,10 +65,11 @@ export default async function handler(req, res) {
         break
 
       case 'mobile_activities':
-        // Reset mobile activities
-        const mobileResult = await query('DELETE FROM mobile_activities')
-        deletedCount = mobileResult.rowCount
-        message = `Deleted ${deletedCount} mobile activity entries`
+        // Reset mobile activities and transactions
+        const mobileActivitiesResult = await query('DELETE FROM mobile_activities')
+        const mobileTransactionsResult = await query('DELETE FROM mobile_transactions')
+        deletedCount = mobileActivitiesResult.rowCount + mobileTransactionsResult.rowCount
+        message = `Deleted ${deletedCount} mobile activity and transaction entries`
         break
 
       case 'today_sync':
@@ -93,7 +94,8 @@ export default async function handler(req, res) {
         const results = await Promise.all([
           query('DELETE FROM stock_logs'),
           query('DELETE FROM scan_logs'),
-          query('DELETE FROM mobile_activities')
+          query('DELETE FROM mobile_activities'),
+          query('DELETE FROM mobile_transactions')
         ])
         
         deletedCount = results.reduce((sum, result) => sum + result.rowCount, 0)
@@ -112,6 +114,27 @@ export default async function handler(req, res) {
         
         deletedCount = statusResult.rowCount
         message = `Reset sync status for ${deletedCount} products`
+        break
+
+      case 'all_products':
+        // Delete ALL products (DANGEROUS!)
+        // Need to remove dependent rows first to avoid FK violations
+        try {
+          await query('BEGIN')
+          // Remove rows that reference products by foreign keys first
+          // Use CASCADE on constraints where possible; else delete all rows
+          await query('TRUNCATE stock_logs RESTART IDENTITY CASCADE')
+          await query('TRUNCATE mobile_transactions RESTART IDENTITY CASCADE')
+          // Some tables may store SKU instead of FK; clear them as well to keep DB consistent
+          await query('TRUNCATE scan_logs RESTART IDENTITY CASCADE')
+          const productsResult = await query('DELETE FROM products')
+          await query('COMMIT')
+          deletedCount = productsResult.rowCount
+          message = `DELETED ${deletedCount} products and cleared related histories.`
+        } catch (e) {
+          await query('ROLLBACK')
+          throw new Error('Failed while deleting products: ' + e.message)
+        }
         break
 
       default:

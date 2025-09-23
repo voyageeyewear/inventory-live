@@ -101,6 +101,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
+      console.log('Attempting login...');
       const response = await axios.post('/api/auth/login', {
         username,
         password
@@ -109,7 +110,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       if (response.data.success) {
         const { user: userData, token: userToken } = response.data;
         
-        console.log('Login successful, setting token:', userToken.substring(0, 20) + '...');
+        console.log('Login successful, setting token:', userToken ? userToken.substring(0, 20) + '...' : 'NO TOKEN');
         
         setUser(userData);
         setToken(userToken);

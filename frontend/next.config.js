@@ -3,6 +3,7 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  output: 'standalone', // Enable standalone build for Docker
   // No rewrites needed - using built-in API routes
   env: {
     NEXT_PUBLIC_API_URL: process.env.NODE_ENV === 'production' 
