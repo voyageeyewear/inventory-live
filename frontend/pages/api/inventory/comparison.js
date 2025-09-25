@@ -1,5 +1,153 @@
 import { query } from '../../../lib/postgres'
-import { getShopifyInventory } from '../../../services/shopifyService'
+import { shopifyFetch } from '../../../services/shopifyService'
+
+// Direct implementation of getShopifyInventory to avoid import issues
+const getShopifyInventory = async (storeDomain, accessToken, sku) => {
+  try {
+    console.log(`Getting Shopify inventory for SKU ${sku} from store ${storeDomain}`)
+    
+    // Get ALL products with pagination to find products with matching SKU
+    let allProducts = []
+    let page = 1
+    let hasMore = true
+    
+    console.log('Searching through all products to find SKU:', sku)
+    
+    // Fetch products in batches until we find the SKU or exhaust all products
+    while (hasMore && allProducts.length < 1000) { // Limit to prevent infinite loops
+      try {
+        const url = `https://${storeDomain}/admin/api/2023-10/products.json?page=${page}&limit=250`
+        
+        const response = await shopifyFetch(url, {
+          method: 'GET',
+          headers: {
+            'X-Shopify-Access-Token': accessToken,
+            'Content-Type': 'application/json'
+          }
+        }, 'inventory-check')
+
+        const data = await response.json()
+        
+        if (!data.products || data.products.length === 0) {
+          hasMore = false
+          break
+        }
+        
+        allProducts = allProducts.concat(data.products)
+        console.log(`Page ${page}: Found ${data.products.length} products, total: ${allProducts.length}`)
+        
+        // Check if we found any products with this SKU (case insensitive)
+        const productsWithSku = data.products.filter(product => 
+          product.variants.some(variant => 
+            variant.sku && variant.sku.toLowerCase().trim() === sku.toLowerCase().trim()
+          )
+        )
+        
+        if (productsWithSku.length > 0) {
+          console.log(`Found ${productsWithSku.length} products with SKU ${sku} on page ${page}`)
+        }
+        
+        page++
+        
+        // Add delay to respect rate limits
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+      } catch (error) {
+        console.error(`Error fetching products page ${page}:`, error.message)
+        hasMore = false
+      }
+    }
+    
+    console.log(`Total products fetched: ${allProducts.length}`)
+    
+    // Find all products that have variants with the matching SKU (case insensitive)
+    const matchingProducts = allProducts.filter(product => 
+      product.variants.some(variant => 
+        variant.sku && variant.sku.toLowerCase().trim() === sku.toLowerCase().trim()
+      )
+    )
+
+    console.log(`Found ${matchingProducts.length} products with SKU ${sku}`)
+
+    if (matchingProducts.length === 0) {
+      console.log(`No products found with SKU ${sku} for inventory check`)
+      return {
+        inventory_quantity: 0,
+        variants: [],
+        found: false,
+        error: `No products found with SKU ${sku} in Shopify store`
+      }
+    }
+
+    let totalInventory = 0
+    const variants = []
+
+    // Get inventory for all variants with this SKU
+    for (const product of matchingProducts) {
+      console.log(`Processing product: "${product.title}" (ID: ${product.id})`)
+      console.log(`Product has ${product.variants.length} total variants`)
+      
+      const matchingVariants = product.variants.filter(variant => 
+        variant.sku && variant.sku.toLowerCase().trim() === sku.toLowerCase().trim()
+      )
+      console.log(`Found ${matchingVariants.length} variants with SKU ${sku}`)
+      
+      for (const variant of matchingVariants) {
+        console.log(`Processing variant: "${variant.title}" (ID: ${variant.id}) with SKU ${variant.sku}`)
+        try {
+          // Get current inventory level
+          const inventoryUrl = `https://${storeDomain}/admin/api/2023-10/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
+          
+          const inventoryResponse = await shopifyFetch(inventoryUrl, {
+            method: 'GET',
+            headers: {
+              'X-Shopify-Access-Token': accessToken,
+              'Content-Type': 'application/json'
+            }
+          }, 'inventory-check')
+
+          const inventoryData = await inventoryResponse.json()
+          
+          if (inventoryData.inventory_levels && inventoryData.inventory_levels.length > 0) {
+            const currentLevel = inventoryData.inventory_levels[0]
+            const variantQuantity = currentLevel.available || 0
+            
+            totalInventory += variantQuantity
+            variants.push({
+              variantId: variant.id,
+              variantTitle: variant.title || variant.id,
+              inventoryItemId: variant.inventory_item_id,
+              quantity: variantQuantity,
+              locationId: currentLevel.location_id
+            })
+            
+            console.log(`Variant ${variant.title || variant.id}: ${variantQuantity} units`)
+          }
+        } catch (variantError) {
+          console.error(`Failed to get inventory for variant ${variant.title || variant.id}:`, variantError.message)
+        }
+      }
+    }
+
+    console.log(`Total inventory for SKU ${sku}: ${totalInventory} units across ${variants.length} variants`)
+
+    return {
+      inventory_quantity: totalInventory,
+      variants: variants,
+      found: true,
+      total_variants: variants.length
+    }
+
+  } catch (error) {
+    console.error(`Failed to get Shopify inventory for SKU ${sku}:`, error.message)
+    return {
+      inventory_quantity: 0,
+      variants: [],
+      found: false,
+      error: error.message
+    }
+  }
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -139,12 +287,19 @@ export default async function handler(req, res) {
       for (const store of stores) {
         try {
           console.log(`  Fetching from store: ${store.store_name}`)
+          console.log(`  Calling getShopifyInventory with:`, {
+            domain: store.shopify_domain,
+            sku: product.sku,
+            tokenLength: store.access_token?.length
+          })
           
           const shopifyInventory = await getShopifyInventory(
             store.shopify_domain,
             store.access_token,
             product.sku
           )
+          
+          console.log(`  getShopifyInventory returned:`, shopifyInventory)
 
           console.log(`  Store ${store.store_name} result:`, {
             found: shopifyInventory?.found,

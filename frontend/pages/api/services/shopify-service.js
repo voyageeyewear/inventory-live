@@ -200,68 +200,19 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
   try {
     console.log(`Syncing all variants for SKU ${sku} to quantity ${quantity} in store ${store.store_name}`)
     
-    // Try multiple search approaches to find products with the SKU
-    let matchingProducts = []
+    // Get ALL products with pagination to find products with matching SKU
+    let allProducts = []
+    let page = 1
+    let hasMore = true
     
-    console.log(`Searching for products with SKU ${sku} in store ${store.store_name}`)
+    console.log(`Searching through all products to find SKU ${sku} in store ${store.store_name}`)
     
-    // Approach 1: Search by product title (in case SKU is in title)
-    try {
-      const titleSearchUrl = `https://${store.store_domain}/admin/api/2023-10/products.json?title=${encodeURIComponent(sku)}`
-      
-      const titleResponse = await shopifyFetch(titleSearchUrl, {
-        method: 'GET',
-        headers: {
-          'X-Shopify-Access-Token': store.access_token,
-          'Content-Type': 'application/json'
-        }
-      }, store.id)
-
-      const titleData = await titleResponse.json()
-      
-      if (titleData.products && titleData.products.length > 0) {
-        const titleMatches = titleData.products.filter(product => 
-          product.variants.some(variant => variant.sku === sku)
-        )
-        matchingProducts = matchingProducts.concat(titleMatches)
-        console.log(`Found ${titleMatches.length} products with SKU ${sku} via title search`)
-      }
-    } catch (error) {
-      console.log('Title search failed:', error.message)
-    }
-    
-    // Approach 2: Search by product handle (in case SKU is in handle)
-    try {
-      const handleSearchUrl = `https://${store.store_domain}/admin/api/2023-10/products.json?handle=${encodeURIComponent(sku)}`
-      
-      const handleResponse = await shopifyFetch(handleSearchUrl, {
-        method: 'GET',
-        headers: {
-          'X-Shopify-Access-Token': store.access_token,
-          'Content-Type': 'application/json'
-        }
-      }, store.id)
-
-      const handleData = await handleResponse.json()
-      
-      if (handleData.products && handleData.products.length > 0) {
-        const handleMatches = handleData.products.filter(product => 
-          product.variants.some(variant => variant.sku === sku)
-        )
-        matchingProducts = matchingProducts.concat(handleMatches)
-        console.log(`Found ${handleMatches.length} products with SKU ${sku} via handle search`)
-      }
-    } catch (error) {
-      console.log('Handle search failed:', error.message)
-    }
-    
-    // Approach 3: Get recent products and search through them
-    if (matchingProducts.length === 0) {
+    // Fetch products in batches until we find the SKU or exhaust all products
+    while (hasMore && allProducts.length < 1000) { // Limit to prevent infinite loops
       try {
-        console.log('No matches found via title/handle search, trying recent products...')
-        const recentUrl = `https://${store.store_domain}/admin/api/2023-10/products.json?limit=100`
+        const url = `https://${store.store_domain}/admin/api/2023-10/products.json?page=${page}&limit=250`
         
-        const recentResponse = await shopifyFetch(recentUrl, {
+        const response = await shopifyFetch(url, {
           method: 'GET',
           headers: {
             'X-Shopify-Access-Token': store.access_token,
@@ -269,28 +220,46 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
           }
         }, store.id)
 
-        const recentData = await recentResponse.json()
+        const data = await response.json()
         
-        if (recentData.products && recentData.products.length > 0) {
-          const recentMatches = recentData.products.filter(product => 
-            product.variants.some(variant => variant.sku === sku)
-          )
-          matchingProducts = matchingProducts.concat(recentMatches)
-          console.log(`Found ${recentMatches.length} products with SKU ${sku} via recent products search`)
+        if (!data.products || data.products.length === 0) {
+          hasMore = false
+          break
         }
+        
+        allProducts = allProducts.concat(data.products)
+        console.log(`Page ${page}: Found ${data.products.length} products, total: ${allProducts.length}`)
+        
+        // Check if we found any products with this SKU
+        const productsWithSku = data.products.filter(product => 
+          product.variants.some(variant => variant.sku === sku)
+        )
+        
+        if (productsWithSku.length > 0) {
+          console.log(`Found ${productsWithSku.length} products with SKU ${sku} on page ${page}`)
+        }
+        
+        page++
+        
+        // Add delay to respect rate limits
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
       } catch (error) {
-        console.log('Recent products search failed:', error.message)
+        console.error(`Error fetching products page ${page}:`, error.message)
+        hasMore = false
       }
     }
     
-    // Remove duplicates
-    const uniqueProducts = matchingProducts.filter((product, index, self) => 
-      index === self.findIndex(p => p.id === product.id)
+    console.log(`Total products fetched: ${allProducts.length}`)
+    
+    // Find all products that have variants with the matching SKU
+    const matchingProducts = allProducts.filter(product => 
+      product.variants.some(variant => variant.sku === sku)
     )
 
-    console.log(`Found ${uniqueProducts.length} unique products with SKU ${sku}`)
+    console.log(`Found ${matchingProducts.length} products with SKU ${sku}`)
 
-    if (uniqueProducts.length === 0) {
+    if (matchingProducts.length === 0) {
       return {
         success: false,
         message: `No product with SKU ${sku} found in Shopify. Please ensure the SKU exists in your Shopify store.`,
@@ -302,11 +271,13 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
     const results = []
 
     // Process each matching product
-    for (const product of uniqueProducts) {
+    for (const product of matchingProducts) {
+      console.log(`Processing product: "${product.title}" (ID: ${product.id})`)
+      console.log(`Product has ${product.variants.length} total variants`)
+      
       // Find all variants with the matching SKU
       const matchingVariants = product.variants.filter(variant => variant.sku === sku)
-      
-      console.log(`Product "${product.title}" has ${product.variants.length} variants, ${matchingVariants.length} with SKU ${sku}`)
+      console.log(`Found ${matchingVariants.length} variants with SKU ${sku}`)
       
       for (const variant of matchingVariants) {
         try {
@@ -396,63 +367,19 @@ export const getShopifyInventory = async (storeDomain, accessToken, sku) => {
   try {
     console.log(`Getting Shopify inventory for SKU ${sku} from store ${storeDomain}`)
     
-    // Try multiple search approaches to find products with the SKU
-    let matchingProducts = []
+    // Get ALL products with pagination to find products with matching SKU
+    let allProducts = []
+    let page = 1
+    let hasMore = true
     
-    // Approach 1: Search by product title
-    try {
-      const titleSearchUrl = `https://${storeDomain}/admin/api/2023-10/products.json?title=${encodeURIComponent(sku)}`
-      
-      const titleResponse = await shopifyFetch(titleSearchUrl, {
-        method: 'GET',
-        headers: {
-          'X-Shopify-Access-Token': accessToken,
-          'Content-Type': 'application/json'
-        }
-      }, 'inventory-check')
-
-      const titleData = await titleResponse.json()
-      
-      if (titleData.products && titleData.products.length > 0) {
-        const titleMatches = titleData.products.filter(product => 
-          product.variants.some(variant => variant.sku === sku)
-        )
-        matchingProducts = matchingProducts.concat(titleMatches)
-      }
-    } catch (error) {
-      console.log('Title search failed for inventory check:', error.message)
-    }
+    console.log('Searching through all products to find SKU:', sku)
     
-    // Approach 2: Search by product handle
-    try {
-      const handleSearchUrl = `https://${storeDomain}/admin/api/2023-10/products.json?handle=${encodeURIComponent(sku)}`
-      
-      const handleResponse = await shopifyFetch(handleSearchUrl, {
-        method: 'GET',
-        headers: {
-          'X-Shopify-Access-Token': accessToken,
-          'Content-Type': 'application/json'
-        }
-      }, 'inventory-check')
-
-      const handleData = await handleResponse.json()
-      
-      if (handleData.products && handleData.products.length > 0) {
-        const handleMatches = handleData.products.filter(product => 
-          product.variants.some(variant => variant.sku === sku)
-        )
-        matchingProducts = matchingProducts.concat(handleMatches)
-      }
-    } catch (error) {
-      console.log('Handle search failed for inventory check:', error.message)
-    }
-    
-    // Approach 3: Get recent products
-    if (matchingProducts.length === 0) {
+    // Fetch products in batches until we find the SKU or exhaust all products
+    while (hasMore && allProducts.length < 1000) { // Limit to prevent infinite loops
       try {
-        const recentUrl = `https://${storeDomain}/admin/api/2023-10/products.json?limit=100`
+        const url = `https://${storeDomain}/admin/api/2023-10/products.json?page=${page}&limit=250`
         
-        const recentResponse = await shopifyFetch(recentUrl, {
+        const response = await shopifyFetch(url, {
           method: 'GET',
           headers: {
             'X-Shopify-Access-Token': accessToken,
@@ -460,30 +387,53 @@ export const getShopifyInventory = async (storeDomain, accessToken, sku) => {
           }
         }, 'inventory-check')
 
-        const recentData = await recentResponse.json()
+        const data = await response.json()
         
-        if (recentData.products && recentData.products.length > 0) {
-          const recentMatches = recentData.products.filter(product => 
-            product.variants.some(variant => variant.sku === sku)
-          )
-          matchingProducts = matchingProducts.concat(recentMatches)
+        if (!data.products || data.products.length === 0) {
+          hasMore = false
+          break
         }
+        
+        allProducts = allProducts.concat(data.products)
+        console.log(`Page ${page}: Found ${data.products.length} products, total: ${allProducts.length}`)
+        
+        // Check if we found any products with this SKU
+        const productsWithSku = data.products.filter(product => 
+          product.variants.some(variant => variant.sku === sku)
+        )
+        
+        if (productsWithSku.length > 0) {
+          console.log(`Found ${productsWithSku.length} products with SKU ${sku} on page ${page}`)
+          // Continue to get all products to avoid missing any
+        }
+        
+        page++
+        
+        // Add delay to respect rate limits
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
       } catch (error) {
-        console.log('Recent products search failed for inventory check:', error.message)
+        console.error(`Error fetching products page ${page}:`, error.message)
+        hasMore = false
       }
     }
     
-    // Remove duplicates
-    const uniqueProducts = matchingProducts.filter((product, index, self) => 
-      index === self.findIndex(p => p.id === product.id)
+    console.log(`Total products fetched: ${allProducts.length}`)
+    
+    // Find all products that have variants with the matching SKU
+    const matchingProducts = allProducts.filter(product => 
+      product.variants.some(variant => variant.sku === sku)
     )
 
-    if (uniqueProducts.length === 0) {
+    console.log(`Found ${matchingProducts.length} products with SKU ${sku}`)
+
+    if (matchingProducts.length === 0) {
       console.log(`No products found with SKU ${sku} for inventory check`)
       return {
         inventory_quantity: 0,
         variants: [],
-        found: false
+        found: false,
+        error: `No products found with SKU ${sku} in Shopify store`
       }
     }
 
@@ -491,10 +441,15 @@ export const getShopifyInventory = async (storeDomain, accessToken, sku) => {
     const variants = []
 
     // Get inventory for all variants with this SKU
-    for (const product of uniqueProducts) {
+    for (const product of matchingProducts) {
+      console.log(`Processing product: "${product.title}" (ID: ${product.id})`)
+      console.log(`Product has ${product.variants.length} total variants`)
+      
       const matchingVariants = product.variants.filter(variant => variant.sku === sku)
+      console.log(`Found ${matchingVariants.length} variants with SKU ${sku}`)
       
       for (const variant of matchingVariants) {
+        console.log(`Processing variant: "${variant.title}" (ID: ${variant.id}) with SKU ${variant.sku}`)
         try {
           // Get current inventory level
           const inventoryUrl = `https://${storeDomain}/admin/api/2023-10/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
