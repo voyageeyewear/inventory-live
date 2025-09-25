@@ -19,7 +19,7 @@ const getShopifyInventory = async (storeDomain, accessToken, sku) => {
     // Fetch products in batches until we find the SKU or exhaust all products
     while (hasMore && allProducts.length < 1000) { // Limit to prevent infinite loops
       try {
-        const url = `https://${storeDomain}/admin/api/2023-10/products.json?page=${page}&limit=250`
+        const url = `https://${storeDomain}/admin/api/2025-01/products.json?page=${page}&limit=250`
         
         const response = await shopifyFetch(url, {
           method: 'GET',
@@ -30,6 +30,13 @@ const getShopifyInventory = async (storeDomain, accessToken, sku) => {
         }, 'inventory-check')
 
         const data = await response.json()
+        
+        console.log(`Page ${page} response:`, {
+          status: response.status,
+          hasProducts: !!data.products,
+          productCount: data.products?.length || 0,
+          error: data.error
+        })
         
         if (!data.products || data.products.length === 0) {
           hasMore = false
@@ -99,7 +106,7 @@ const getShopifyInventory = async (storeDomain, accessToken, sku) => {
         console.log(`Processing variant: "${variant.title}" (ID: ${variant.id}) with SKU ${variant.sku}`)
         try {
           // Get current inventory level
-          const inventoryUrl = `https://${storeDomain}/admin/api/2023-10/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
+          const inventoryUrl = `https://${storeDomain}/admin/api/2025-01/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
           
           const inventoryResponse = await shopifyFetch(inventoryUrl, {
             method: 'GET',
@@ -112,19 +119,31 @@ const getShopifyInventory = async (storeDomain, accessToken, sku) => {
           const inventoryData = await inventoryResponse.json()
           
           if (inventoryData.inventory_levels && inventoryData.inventory_levels.length > 0) {
-            const currentLevel = inventoryData.inventory_levels[0]
-            const variantQuantity = currentLevel.available || 0
+            // Sum inventory across all locations for this variant
+            let variantTotalQuantity = 0
+            const variantLocations = []
             
-            totalInventory += variantQuantity
+            for (const level of inventoryData.inventory_levels) {
+              const locationQuantity = level.available || 0
+              variantTotalQuantity += locationQuantity
+              variantLocations.push({
+                locationId: level.location_id,
+                quantity: locationQuantity
+              })
+            }
+            
+            totalInventory += variantTotalQuantity
             variants.push({
               variantId: variant.id,
               variantTitle: variant.title || variant.id,
               inventoryItemId: variant.inventory_item_id,
-              quantity: variantQuantity,
-              locationId: currentLevel.location_id
+              quantity: variantTotalQuantity,
+              locations: variantLocations
             })
             
-            console.log(`Variant ${variant.title || variant.id}: ${variantQuantity} units`)
+            console.log(`Variant ${variant.title || variant.id}: ${variantTotalQuantity} units across ${variantLocations.length} locations`)
+          } else {
+            console.log(`No inventory levels found for variant ${variant.title || variant.id}`)
           }
         } catch (variantError) {
           console.error(`Failed to get inventory for variant ${variant.title || variant.id}:`, variantError.message)
