@@ -45,11 +45,14 @@ A comprehensive full-stack inventory management system with barcode scanning cap
 
 ### 📱 Mobile Apps
 **Latest APK Files**:
-- **Inventory Scanner Pro**: `InventoryBarcodeScanner_Pro_Fixed.apk` (63.6 MB) ✅ **🆕 FIXED INTEGRATION VERSION**
+- **🆕 Railway Updated**: `InventoryBarcodeScanner_Railway_Latest.apk` (63.0 MB) ✅ **LATEST WITH RAILWAY URL**
+  - 🔗 **Updated API**: Connected to current Railway deployment
   - 🎨 **Modern Design**: Professional UI with Material Design 3
   - 🔊 **Beep Sound**: Audio feedback on successful scans
   - 📊 **Activity Tracking**: View scan history and approval status
   - 🚀 **Enhanced UX**: Smooth animations and improved experience
+- **Alternative Scanner**: `InventoryScannerApp_Railway_Latest.apk` (62.0 MB) ✅ **SECONDARY APP WITH RAILWAY URL**
+- **Previous Pro Version**: `InventoryBarcodeScanner_Pro_Fixed.apk` (63.6 MB) ✅ **FIXED INTEGRATION VERSION**
 - **Previous Version**: `InventoryBarcodeScanner_Latest.apk` (60 MB) ✅ **FIXED BLACK SCREEN ISSUE**
 - **Legacy App**: `InventoryScanner_ScanHistory_Latest.apk` (59 MB)
 - **Debug Version**: `InventoryBarcodeScanner_Debug.apk` (155 MB)
@@ -523,6 +526,10 @@ For technical support or questions:
 - **✅ Sync Activity Dashboard**: Unified activity log with consolidation features
 - **✅ Railway Deployment**: Improved deployment process with Railway platform
 - **✅ Comprehensive Data Management**: Reset histories, backup, and bulk operations
+- **✅ Mobile App Updates**: New APK files with updated Railway URLs
+  - Updated `inventory_barcode_scanner` app (v1.1.0+2) with current Railway API endpoint
+  - Updated `inventory_scanner_app` app (v1.1.0+2) with current Railway API endpoint
+  - Both apps now connect to `https://inventory-app-production-1629.up.railway.app`
 
 ### 🎨 UI/UX Improvements
 - **📱 Single-Panel Design**: Complete elimination of horizontal scrolling
