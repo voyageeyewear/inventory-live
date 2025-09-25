@@ -200,37 +200,100 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
   try {
     console.log(`Syncing all variants for SKU ${sku} to quantity ${quantity} in store ${store.store_name}`)
     
-    // Search for product by SKU
-    const searchUrl = `https://${store.store_domain}/admin/api/2023-10/products.json?title=${encodeURIComponent(sku)}`
+    // Try multiple search approaches to find products with the SKU
+    let matchingProducts = []
     
-    const searchResponse = await shopifyFetch(searchUrl, {
-      method: 'GET',
-      headers: {
-        'X-Shopify-Access-Token': store.access_token,
-        'Content-Type': 'application/json'
-      }
-    }, store.id)
+    console.log(`Searching for products with SKU ${sku} in store ${store.store_name}`)
+    
+    // Approach 1: Search by product title (in case SKU is in title)
+    try {
+      const titleSearchUrl = `https://${store.store_domain}/admin/api/2023-10/products.json?title=${encodeURIComponent(sku)}`
+      
+      const titleResponse = await shopifyFetch(titleSearchUrl, {
+        method: 'GET',
+        headers: {
+          'X-Shopify-Access-Token': store.access_token,
+          'Content-Type': 'application/json'
+        }
+      }, store.id)
 
-    const searchData = await searchResponse.json()
+      const titleData = await titleResponse.json()
+      
+      if (titleData.products && titleData.products.length > 0) {
+        const titleMatches = titleData.products.filter(product => 
+          product.variants.some(variant => variant.sku === sku)
+        )
+        matchingProducts = matchingProducts.concat(titleMatches)
+        console.log(`Found ${titleMatches.length} products with SKU ${sku} via title search`)
+      }
+    } catch (error) {
+      console.log('Title search failed:', error.message)
+    }
     
-    if (!searchData.products || searchData.products.length === 0) {
-      console.log(`No product found for SKU ${sku} in store ${store.store_name}`)
-      return {
-        success: false,
-        message: `Product with SKU ${sku} not found in Shopify`,
-        variantsUpdated: 0
+    // Approach 2: Search by product handle (in case SKU is in handle)
+    try {
+      const handleSearchUrl = `https://${store.store_domain}/admin/api/2023-10/products.json?handle=${encodeURIComponent(sku)}`
+      
+      const handleResponse = await shopifyFetch(handleSearchUrl, {
+        method: 'GET',
+        headers: {
+          'X-Shopify-Access-Token': store.access_token,
+          'Content-Type': 'application/json'
+        }
+      }, store.id)
+
+      const handleData = await handleResponse.json()
+      
+      if (handleData.products && handleData.products.length > 0) {
+        const handleMatches = handleData.products.filter(product => 
+          product.variants.some(variant => variant.sku === sku)
+        )
+        matchingProducts = matchingProducts.concat(handleMatches)
+        console.log(`Found ${handleMatches.length} products with SKU ${sku} via handle search`)
+      }
+    } catch (error) {
+      console.log('Handle search failed:', error.message)
+    }
+    
+    // Approach 3: Get recent products and search through them
+    if (matchingProducts.length === 0) {
+      try {
+        console.log('No matches found via title/handle search, trying recent products...')
+        const recentUrl = `https://${store.store_domain}/admin/api/2023-10/products.json?limit=100`
+        
+        const recentResponse = await shopifyFetch(recentUrl, {
+          method: 'GET',
+          headers: {
+            'X-Shopify-Access-Token': store.access_token,
+            'Content-Type': 'application/json'
+          }
+        }, store.id)
+
+        const recentData = await recentResponse.json()
+        
+        if (recentData.products && recentData.products.length > 0) {
+          const recentMatches = recentData.products.filter(product => 
+            product.variants.some(variant => variant.sku === sku)
+          )
+          matchingProducts = matchingProducts.concat(recentMatches)
+          console.log(`Found ${recentMatches.length} products with SKU ${sku} via recent products search`)
+        }
+      } catch (error) {
+        console.log('Recent products search failed:', error.message)
       }
     }
-
-    // Find all products that match the SKU (could be multiple if SKU is in title)
-    const matchingProducts = searchData.products.filter(product => 
-      product.variants.some(variant => variant.sku === sku)
+    
+    // Remove duplicates
+    const uniqueProducts = matchingProducts.filter((product, index, self) => 
+      index === self.findIndex(p => p.id === product.id)
     )
 
-    if (matchingProducts.length === 0) {
+    console.log(`Found ${uniqueProducts.length} unique products with SKU ${sku}`)
+
+    if (uniqueProducts.length === 0) {
       return {
         success: false,
-        message: `No product with exact SKU ${sku} found`,
+        message: `No product with SKU ${sku} found in Shopify. Please ensure the SKU exists in your Shopify store.`,
         variantsUpdated: 0
       }
     }
@@ -239,9 +302,11 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
     const results = []
 
     // Process each matching product
-    for (const product of matchingProducts) {
+    for (const product of uniqueProducts) {
       // Find all variants with the matching SKU
       const matchingVariants = product.variants.filter(variant => variant.sku === sku)
+      
+      console.log(`Product "${product.title}" has ${product.variants.length} variants, ${matchingVariants.length} with SKU ${sku}`)
       
       for (const variant of matchingVariants) {
         try {
