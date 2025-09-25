@@ -666,6 +666,38 @@ export default function ProductsEnhanced() {
     }
   }
 
+  const handleMarkAllUpToDate = async () => {
+    try {
+      const confirmed = confirm(
+        'This will mark ALL products as up-to-date for sync. Use this after uploading a master CSV file.\n\n' +
+        'This means only products that are modified AFTER this action will show as needing sync.\n\n' +
+        'Are you sure you want to continue?'
+      )
+      
+      if (!confirmed) return
+
+      toast.loading('Marking all products as up-to-date...', { id: 'mark-up-to-date' })
+
+      const token = localStorage.getItem('token')
+      const response = await axios.post('/api/products/mark-all-up-to-date', {}, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 30000
+      })
+
+      if (response.data.success) {
+        toast.success(`Successfully marked ${response.data.updatedCount} products as up-to-date!`, { id: 'mark-up-to-date' })
+        
+        // Refresh the products list to show updated sync status
+        await fetchProducts()
+      } else {
+        toast.error(response.data.message || 'Failed to mark products as up-to-date', { id: 'mark-up-to-date' })
+      }
+    } catch (error: any) {
+      console.error('Error marking products as up-to-date:', error)
+      toast.error('Failed to mark products as up-to-date: ' + (error.response?.data?.message || error.message), { id: 'mark-up-to-date' })
+    }
+  }
+
   const handleSyncToAllStores = async () => {
     if (stores.length === 0) {
       toast.error('No connected stores found. Please connect stores in Settings first.')
@@ -1099,9 +1131,10 @@ export default function ProductsEnhanced() {
           </div>
 
           {/* Search and Sync Actions */}
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-              <div className="flex-1 max-w-md">
+          <div className="bg-white rounded-lg shadow-sm border p-4 sm:p-6">
+            <div className="flex flex-col gap-4">
+              {/* Search Section */}
+              <div className="flex-1">
                 <input
                   type="text"
                   placeholder="Search products..."
@@ -1109,20 +1142,36 @@ export default function ProductsEnhanced() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
+                {showOnlyModified && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="inline-flex items-center px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+                      🔍 Showing only modified products ({productsNeedingSync.length})
+                    </span>
+                    <button
+                      onClick={() => setShowOnlyModified(false)}
+                      className="text-xs text-orange-600 hover:text-orange-800 underline"
+                    >
+                      Clear filter
+                    </button>
+                  </div>
+                )}
               </div>
-              <div className="flex gap-2 flex-wrap">
+              
+              {/* Action Buttons - Mobile First */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {selectedProducts.size > 0 && (
                   <button
                     onClick={handleSyncSelected}
                     disabled={syncing}
-                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 px-3 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium"
                   >
                     {syncing ? (
                       <RefreshCw className="h-4 w-4 animate-spin" />
                     ) : (
                       <RefreshCw className="h-4 w-4" />
                     )}
-                    Sync Selected ({selectedProducts.size})
+                    <span className="hidden sm:inline">Sync Selected</span>
+                    <span className="sm:hidden">Sync ({selectedProducts.size})</span>
                   </button>
                 )}
                 
@@ -1131,19 +1180,19 @@ export default function ProductsEnhanced() {
                   <button
                     onClick={() => setShowStoreSelector(!showStoreSelector)}
                     disabled={bulkSyncing || stores.length === 0}
-                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 px-3 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium w-full"
                   >
                     <Store className="h-4 w-4" />
                     <div className="flex flex-col items-start">
                       <span className="text-sm font-medium">Sync by Store</span>
-                      <span className="text-xs opacity-90">
+                      <span className="text-xs opacity-90 hidden sm:block">
                         ⚡ Smart: {productsNeedingSync.length} modified
                       </span>
                     </div>
                   </button>
                   
                   {showStoreSelector && (
-                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border z-10">
+                    <div className="absolute right-0 mt-2 w-full sm:w-64 bg-white rounded-lg shadow-lg border z-10">
                       <div className="p-4">
                         <h3 className="font-medium text-gray-900 mb-3">Select Store to Sync</h3>
                         <select
@@ -1185,7 +1234,7 @@ export default function ProductsEnhanced() {
                 <button
                   onClick={handleSyncToAllStores}
                   disabled={bulkSyncing || stores.length === 0}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                  className="flex items-center justify-center gap-2 px-3 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm font-medium w-full"
                 >
                   <RefreshCw className={`h-4 w-4 ${bulkSyncing ? 'animate-spin' : ''}`} />
                   <div className="flex flex-col items-start">
@@ -1193,262 +1242,304 @@ export default function ProductsEnhanced() {
                       {bulkSyncing ? 'Syncing...' : 'Sync All Stores'}
                     </span>
                     {!bulkSyncing && (
-                      <span className="text-xs opacity-90">
+                      <span className="text-xs opacity-90 hidden sm:block">
                         ⚡ Smart: {productsNeedingSync.length} modified
                       </span>
                     )}
                   </div>
                 </button>
 
-                {stores.length === 0 && (
-                  <p className="text-sm text-gray-500 italic">
-                    No connected stores. <a href="/settings" className="text-blue-600 hover:underline">Connect stores</a> to enable sync.
-                  </p>
-                )}
-
-                {/* Smart Sync Info */}
-                {stores.length > 0 && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
-                    <Zap className="h-4 w-4 text-blue-600" />
-                    <span>
-                      <strong>Smart Sync:</strong> Only syncs {productsNeedingSync.length} modified products 
-                      {productsNeedingSync.length === 0 ? ' (all up to date!)' : ` out of ${products.length} total`}
-                      {productsNeedingSync.length > 0 && ' - saves time & API costs!'}
+                {/* Mark All Up-to-Date Button */}
+                <button
+                  onClick={handleMarkAllUpToDate}
+                  className="flex items-center justify-center gap-2 px-3 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium w-full"
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  <div className="flex flex-col items-start">
+                    <span className="text-sm font-medium">Mark All Up-to-Date</span>
+                    <span className="text-xs opacity-90 hidden sm:block">
+                      📋 After master CSV upload
                     </span>
                   </div>
+                </button>
+
+                {/* Show Only Modified Button */}
+                <button
+                  onClick={() => setShowOnlyModified(!showOnlyModified)}
+                  className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg transition-colors text-sm font-medium w-full ${
+                    showOnlyModified 
+                      ? 'bg-orange-600 text-white hover:bg-orange-700' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  <AlertTriangle className="h-4 w-4" />
+                  <div className="flex flex-col items-start">
+                    <span className="text-sm font-medium">
+                      {showOnlyModified ? 'Show All Products' : 'Show Modified Only'}
+                    </span>
+                    <span className="text-xs opacity-90 hidden sm:block">
+                      {showOnlyModified 
+                        ? `👁️ Showing ${productsNeedingSync.length} modified` 
+                        : `🔍 Filter modified products`
+                      }
+                    </span>
+                  </div>
+                </button>
+
+                {stores.length === 0 && (
+                  <div className="col-span-full">
+                    <p className="text-sm text-gray-500 italic">
+                      No connected stores. <a href="/settings" className="text-blue-600 hover:underline">Connect stores</a> to enable sync.
+                    </p>
+                  </div>
                 )}
+
               </div>
+              
+              {/* Smart Sync Info */}
+              {stores.length > 0 && (
+                <div className="flex items-center gap-2 text-sm text-gray-600 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
+                  <Zap className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                  <span className="break-words">
+                    <strong>Smart Sync:</strong> {showOnlyModified 
+                      ? `Showing ${productsNeedingSync.length} modified products that need sync`
+                      : `Only syncs ${productsNeedingSync.length} modified products${productsNeedingSync.length === 0 ? ' (all up to date!)' : ` out of ${products.length} total`}${productsNeedingSync.length > 0 && ' - saves time & API costs!'}`
+                    }
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Products Summary */}
           <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <p className="text-sm text-gray-600">
                 Showing {paginatedProducts.length} of {filteredProducts.length} products
-                {searchTerm && ` (filtered from ${products.length} total)`}
+                {showOnlyModified && ` (modified only)`}
+                {searchTerm && ` (filtered from ${showOnlyModified ? productsNeedingSync.length : products.length} total)`}
               </p>
               <div className="flex items-center gap-2 text-sm text-gray-500">
                 <Clock className="h-4 w-4" />
-                Last updated: {formatRelativeTime(new Date().toISOString())}
+                <span className="hidden sm:inline">Last updated: {formatRelativeTime(new Date().toISOString())}</span>
+                <span className="sm:hidden">{formatRelativeTime(new Date().toISOString())}</span>
               </div>
             </div>
           </div>
 
-          {/* Products Table */}
-          <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+          {/* Products Grid - Single Panel Layout */}
+          <div className="bg-white rounded-lg shadow-sm border">
+            {/* Select All Header */}
+            <div className="bg-gray-50 px-4 py-3 border-b">
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={handleSelectAll}
+                  className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+                >
+                  {selectedProducts.size === filteredProducts.length && filteredProducts.length > 0 ? (
+                    <CheckSquare className="h-4 w-4 text-blue-600" />
+                  ) : (
+                    <Square className="h-4 w-4" />
+                  )}
+                  <span className="text-sm font-medium">
+                    Select All ({selectedProducts.size}/{filteredProducts.length})
+                  </span>
+                </button>
+                {selectedProducts.size > 0 && (
+                  <span className="text-xs text-blue-600 font-medium">
+                    {selectedProducts.size} selected
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Products Grid */}
+            <div className="divide-y divide-gray-200">
+              {paginatedProducts.map((product) => (
+                <div key={product.id} className="p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-start gap-4">
+                    {/* Selection Checkbox */}
+                    <div className="flex-shrink-0 pt-1">
                       <button
-                        onClick={handleSelectAll}
+                        onClick={() => handleSelectProduct(product.id)}
                         className="text-gray-400 hover:text-gray-600"
                       >
-                        {selectedProducts.size === filteredProducts.length && filteredProducts.length > 0 ? (
-                          <CheckSquare className="h-4 w-4" />
+                        {selectedProducts.has(product.id.toString()) ? (
+                          <CheckSquare className="h-5 w-5 text-blue-600" />
                         ) : (
-                          <Square className="h-4 w-4" />
+                          <Square className="h-5 w-5" />
                         )}
                       </button>
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Product
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      SKU
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Quantity
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Sync Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {paginatedProducts.map((product) => (
-                    <tr key={product.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() => handleSelectProduct(product.id)}
-                          className="text-gray-400 hover:text-gray-600"
-                        >
-                          {selectedProducts.has(product.id.toString()) ? (
-                            <CheckSquare className="h-4 w-4 text-blue-600" />
-                          ) : (
-                            <Square className="h-4 w-4" />
-                          )}
-                        </button>
-                      </td>
-                      <td className="px-6 py-4">
-                        {editingProduct === product.id.toString() ? (
-                          <input
-                            type="text"
-                            value={editForm.product_name}
-                            onChange={(e) => handleEditInputChange('product_name', e.target.value)}
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          />
-                        ) : (
-                          <div className="flex items-center">
-                          {product.image_url && (
-                            <img
-                              className="h-10 w-10 rounded-lg object-cover mr-3"
-                              src={product.image_url}
-                              alt={product.product_name}
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none'
-                              }}
-                            />
-                          )}
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {product.product_name}
-                            </div>
-                            {product.category && (
-                              <div className="text-sm text-gray-500">{product.category}</div>
-                            )}
-                          </div>
-                        </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
-                        {product.sku}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {editingProduct === product.id.toString() ? (
-                          <input
-                            type="number"
-                            value={editForm.quantity}
-                            onChange={(e) => handleEditInputChange('quantity', e.target.value)}
-                            min="0"
-                            className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          />
-                        ) : (
-                          <div className="flex items-center">
-                            <span className={`text-sm font-medium ${
-                              product.quantity < 10 ? 'text-red-600' : 
-                              product.quantity < 50 ? 'text-yellow-600' : 'text-green-600'
-                            }`}>
-                              {product.quantity}
-                            </span>
-                            {product.quantity < 10 && (
-                              <AlertTriangle className="h-4 w-4 text-red-500 ml-1" />
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          product.is_active 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {product.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          {product.needs_sync ? (
-                            <>
-                              <div className="h-2 w-2 bg-orange-500 rounded-full"></div>
-                              <span className="text-xs text-orange-600 font-medium">
-                                {product.last_synced ? 'Modified' : 'Never synced'}
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                              <span className="text-xs text-green-600 font-medium">Up to date</span>
-                            </>
-                          )}
-                        </div>
-                        {product.last_synced && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            Last synced: {formatRelativeTime(product.last_synced)}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex items-center gap-1 flex-wrap">
+                    </div>
+
+                    {/* Product Image */}
+                    <div className="flex-shrink-0">
+                      {product.image_url && (
+                        <img
+                          className="h-16 w-16 rounded-lg object-cover border border-gray-200"
+                          src={product.image_url}
+                          alt={product.product_name}
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none'
+                          }}
+                        />
+                      )}
+                    </div>
+
+                    {/* Product Details */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                        {/* Left Column - Product Info */}
+                        <div className="flex-1 min-w-0">
                           {editingProduct === product.id.toString() ? (
-                            <>
-                              <button
-                                onClick={() => handleSaveEdit(product.id.toString())}
-                                className="text-green-600 hover:text-green-900 flex items-center gap-1"
-                              >
-                                <Save className="h-4 w-4" />
-                                Save
-                              </button>
-                              <button
-                                onClick={handleCancelEdit}
-                                className="text-gray-600 hover:text-gray-900 flex items-center gap-1"
-                              >
-                                <X className="h-4 w-4" />
-                                Cancel
-                              </button>
-                            </>
+                            <input
+                              type="text"
+                              value={editForm.product_name}
+                              onChange={(e) => handleEditInputChange('product_name', e.target.value)}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+                            />
                           ) : (
-                            <>
-                              <button
-                                onClick={() => handleEditProduct(product)}
-                                className="text-blue-600 hover:text-blue-900 flex items-center gap-1"
-                                title="Edit product details"
-                              >
-                                <Edit className="h-4 w-4" />
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDeleteProduct(product)}
-                                className="text-red-600 hover:text-red-900 flex items-center gap-1"
-                                title="Delete product"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                Delete
-                              </button>
-                              <button
-                                onClick={() => handleSyncProduct(product)}
-                                className="text-green-600 hover:text-green-900 flex items-center gap-1"
-                                title="Sync product to all stores"
-                              >
-                                <RotateCw className="h-4 w-4" />
-                                Sync
-                              </button>
-                              <button
-                                onClick={() => handleAuditProduct(product)}
-                                disabled={loadingAudit}
-                                className="text-purple-600 hover:text-purple-900 flex items-center gap-1 disabled:opacity-50"
-                                title="View product audit history"
-                              >
-                                {loadingAudit ? (
-                                  <RefreshCw className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <FileText className="h-4 w-4" />
-                                )}
-                                Audit
-                              </button>
-                            </>
+                            <h3 className="text-sm font-medium text-gray-900 mb-1 line-clamp-2">
+                              {product.product_name}
+                            </h3>
                           )}
+                          
+                          <div className="flex items-center gap-4 text-xs text-gray-500 mb-2">
+                            <span className="font-mono bg-gray-100 px-2 py-1 rounded">{product.sku}</span>
+                            {product.category && (
+                              <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                {product.category}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Quantity and Status Row */}
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">Quantity:</span>
+                              {editingProduct === product.id.toString() ? (
+                                <input
+                                  type="number"
+                                  value={editForm.quantity}
+                                  onChange={(e) => handleEditInputChange('quantity', e.target.value)}
+                                  className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                              ) : (
+                                <span className={`text-sm font-semibold ${
+                                  product.quantity < 10 ? 'text-red-600' : 
+                                  product.quantity < 50 ? 'text-yellow-600' : 'text-green-600'
+                                }`}>
+                                  {product.quantity}
+                                  {product.quantity < 10 && <AlertTriangle className="h-3 w-3 text-red-500 ml-1 inline" />}
+                                </span>
+                              )}
+                            </div>
+
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              product.is_active 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {product.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                          </div>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+                        {/* Right Column - Sync Status and Actions */}
+                        <div className="flex flex-col items-end gap-2">
+                          {/* Sync Status */}
+                          <div className="flex items-center gap-2">
+                            {product.needs_sync ? (
+                              <>
+                                <div className="h-2 w-2 bg-orange-500 rounded-full"></div>
+                                <span className="text-xs text-orange-600 font-medium">
+                                  {product.last_synced ? 'Modified' : 'Never synced'}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="h-2 w-2 bg-green-500 rounded-full"></div>
+                                <span className="text-xs text-green-600 font-medium">Up to date</span>
+                              </>
+                            )}
+                          </div>
+                          
+                          {product.last_synced && (
+                            <div className="text-xs text-gray-500">
+                              Last synced: {formatRelativeTime(product.last_synced)}
+                            </div>
+                          )}
+
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-1">
+                            {editingProduct === product.id.toString() ? (
+                              <>
+                                <button
+                                  onClick={() => handleSaveEdit(product.id.toString())}
+                                  className="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-50"
+                                  title="Save changes"
+                                >
+                                  <Save className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={handleCancelEdit}
+                                  className="text-gray-600 hover:text-gray-900 p-1 rounded hover:bg-gray-50"
+                                  title="Cancel editing"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => handleEditProduct(product)}
+                                  className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50"
+                                  title="Edit product"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteProduct(product)}
+                                  className="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-50"
+                                  title="Delete product"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleSyncProduct(product)}
+                                  className="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-50"
+                                  title="Sync product"
+                                >
+                                  <RotateCw className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleAuditProduct(product)}
+                                  disabled={loadingAudit}
+                                  className="text-purple-600 hover:text-purple-900 p-1 rounded hover:bg-purple-50 disabled:opacity-50"
+                                  title="View audit history"
+                                >
+                                  {loadingAudit ? (
+                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <FileText className="h-4 w-4" />
+                                  )}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="bg-white rounded-lg shadow-sm border p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="text-sm text-gray-700">
                   Page {currentPage} of {totalPages}
                 </div>
@@ -1456,16 +1547,18 @@ export default function ProductsEnhanced() {
                   <button
                     onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                     disabled={currentPage === 1}
-                    className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50"
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm disabled:opacity-50 hover:bg-gray-50"
                   >
-                    Previous
+                    <span className="hidden sm:inline">Previous</span>
+                    <span className="sm:hidden">←</span>
                   </button>
                   <button
                     onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                     disabled={currentPage === totalPages}
-                    className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50"
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm disabled:opacity-50 hover:bg-gray-50"
                   >
-                    Next
+                    <span className="hidden sm:inline">Next</span>
+                    <span className="sm:hidden">→</span>
                   </button>
                 </div>
               </div>
@@ -1685,7 +1778,7 @@ export default function ProductsEnhanced() {
         {/* Sync Progress Bar */}
         {syncProgress.isActive && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-96 max-w-md mx-4">
+            <div className="bg-white rounded-lg p-4 sm:p-6 w-full max-w-md mx-4">
               <div className="text-center">
                 <div className="flex items-center justify-center mb-4">
                   {syncProgress.stage === 'preparing' && <RefreshCw className="h-8 w-8 animate-spin text-blue-500" />}
@@ -1727,7 +1820,7 @@ export default function ProductsEnhanced() {
         {/* Sync Completion Report Modal */}
         {syncReport.show && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-lg p-4 sm:p-6 w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-semibold">Sync Report</h3>
                 <button
@@ -1739,7 +1832,7 @@ export default function ProductsEnhanced() {
               </div>
 
               {/* Summary Cards */}
-              <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 <div className="bg-blue-50 rounded-lg p-4 text-center">
                   <div className="text-2xl font-bold text-blue-600">{syncReport.results.total}</div>
                   <div className="text-sm text-blue-600">Total Products</div>

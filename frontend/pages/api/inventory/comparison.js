@@ -7,7 +7,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { page = 1, limit = 50, search = '' } = req.query
+    const { 
+      page = 1, 
+      limit = 50, 
+      search = '', 
+      status = 'all', 
+      store = 'all', 
+      category = 'all',
+      sortBy = 'difference',
+      sortOrder = 'desc'
+    } = req.query
     const offset = (parseInt(page) - 1) * parseInt(limit)
 
     // Build search condition
@@ -21,6 +30,32 @@ export default async function handler(req, res) {
       paramIndex++
     }
 
+    // Build category filter
+    if (category && category !== 'all') {
+      searchCondition += ` AND LOWER(category) = $${paramIndex}`
+      queryParams.push(category.toLowerCase())
+      paramIndex++
+    }
+
+    // Build sort order
+    let orderBy = 'product_name ASC'
+    switch (sortBy) {
+      case 'product_name':
+        orderBy = `product_name ${sortOrder.toUpperCase()}`
+        break
+      case 'sku':
+        orderBy = `sku ${sortOrder.toUpperCase()}`
+        break
+      case 'local_quantity':
+        orderBy = `quantity ${sortOrder.toUpperCase()}`
+        break
+      case 'smart':
+      case 'difference':
+      default:
+        orderBy = `product_name ASC` // Will be sorted after comparison
+        break
+    }
+
     // Get ALL active products from local database with optional search
     const productsResult = await query(`
       SELECT 
@@ -30,7 +65,7 @@ export default async function handler(req, res) {
         last_modified, last_synced
       FROM products 
       WHERE is_active = true ${searchCondition}
-      ORDER BY product_name ASC
+      ORDER BY ${orderBy}
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `, [...queryParams, parseInt(limit), offset])
 
@@ -166,9 +201,70 @@ export default async function handler(req, res) {
       })
     }
 
+    // Apply status filter
+    let filteredComparisons = comparisons
+    if (status && status !== 'all') {
+      filteredComparisons = comparisons.filter(comp => comp.status === status)
+    }
+
+    // Apply store filter
+    if (store && store !== 'all') {
+      filteredComparisons = filteredComparisons.filter(comp => 
+        comp.shopify_quantities[store] !== undefined
+      )
+    }
+
+    // Apply smart sorting - prioritize products that exist in Shopify stores
+    if (sortBy === 'smart' || sortBy === 'difference') {
+      filteredComparisons.sort((a, b) => {
+        // First priority: Products that exist in Shopify stores (have inventory > 0)
+        const aHasShopifyInventory = a.total_shopify_quantity > 0
+        const bHasShopifyInventory = b.total_shopify_quantity > 0
+        
+        if (aHasShopifyInventory && !bHasShopifyInventory) return -1
+        if (!aHasShopifyInventory && bHasShopifyInventory) return 1
+        
+        // Second priority: Products with higher Shopify inventory
+        if (aHasShopifyInventory && bHasShopifyInventory) {
+          if (sortOrder === 'desc') {
+            return b.total_shopify_quantity - a.total_shopify_quantity
+          } else {
+            return a.total_shopify_quantity - b.total_shopify_quantity
+          }
+        }
+        
+        // Third priority: Products with larger differences (need more attention)
+        const diffA = Math.abs(a.difference)
+        const diffB = Math.abs(b.difference)
+        if (sortOrder === 'desc') {
+          return diffB - diffA
+        } else {
+          return diffA - diffB
+        }
+      })
+    }
+
+    // Apply specific sorting if requested (excluding smart and difference which are handled above)
+    if (sortBy === 'difference_only') {
+      filteredComparisons.sort((a, b) => {
+        const diffA = Math.abs(a.difference)
+        const diffB = Math.abs(b.difference)
+        return sortOrder === 'desc' ? diffB - diffA : diffA - diffB
+      })
+    }
+
+    // Apply shopify quantity sorting
+    if (sortBy === 'shopify_quantity') {
+      filteredComparisons.sort((a, b) => {
+        return sortOrder === 'desc' 
+          ? b.total_shopify_quantity - a.total_shopify_quantity
+          : a.total_shopify_quantity - b.total_shopify_quantity
+      })
+    }
+
       res.status(200).json({
         success: true,
-        comparisons,
+        comparisons: filteredComparisons,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),

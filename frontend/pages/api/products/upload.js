@@ -149,11 +149,12 @@ export default async function handler(req, res) {
         const existingResult = await query('SELECT id FROM products WHERE sku = $1', [product.sku])
         
         if (existingResult.rows.length > 0) {
-          // Update existing product
+          // Update existing product and mark as synced (up to date)
           await query(`
             UPDATE products 
             SET product_name = $1, category = $2, price = $3, quantity = $4, 
-                description = $5, image_url = $6, updated_at = CURRENT_TIMESTAMP
+                description = $5, image_url = $6, updated_at = CURRENT_TIMESTAMP,
+                last_synced = CURRENT_TIMESTAMP, needs_sync = false
             WHERE sku = $7 AND is_active = true
           `, [
             product.product_name,
@@ -165,10 +166,10 @@ export default async function handler(req, res) {
             product.sku
           ])
         } else {
-          // Insert new product
+          // Insert new product and mark as synced (up to date)
           await query(`
-            INSERT INTO products (sku, product_name, category, price, quantity, description, image_url, is_active, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO products (sku, product_name, category, price, quantity, description, image_url, is_active, created_at, updated_at, last_synced, needs_sync)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, false)
           `, [
             product.sku,
             product.product_name,
@@ -192,7 +193,7 @@ export default async function handler(req, res) {
           product.quantity,
           0,
           product.quantity,
-          `CSV upload: ${product.product_name}`,
+          `CSV upload: ${product.product_name} - Sync status set to up-to-date`,
           user.id,
           user.username
         ])
@@ -205,7 +206,7 @@ export default async function handler(req, res) {
       }
     }
 
-    const message = `CSV upload completed: ${successCount} products processed successfully`
+    const message = `CSV upload completed: ${successCount} products processed successfully. All products marked as up-to-date for sync.`
     const responseData = {
       success: true,
       message,

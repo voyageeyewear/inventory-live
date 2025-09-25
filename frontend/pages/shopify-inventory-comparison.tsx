@@ -37,6 +37,14 @@ interface Store {
   store_name: string
   store_domain: string
   connected: boolean
+  stats?: {
+    total_products_synced: number
+    successful_syncs: number
+    failed_syncs: number
+    last_sync_activity: string
+    recent_activity_count: number
+    sync_success_rate: number
+  }
 }
 
 interface InventoryComparison {
@@ -55,6 +63,10 @@ export default function ShopifyInventoryComparison() {
   const [syncing, setSyncing] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('all')
+  const [filterStore, setFilterStore] = useState<string>('all')
+  const [filterCategory, setFilterCategory] = useState<string>('all')
+  const [sortBy, setSortBy] = useState<string>('smart')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(25)
   const [pagination, setPagination] = useState<any>(null)
@@ -63,6 +75,7 @@ export default function ShopifyInventoryComparison() {
   const [showAuditModal, setShowAuditModal] = useState(false)
   const [auditData, setAuditData] = useState<any>(null)
   const [auditLoading, setAuditLoading] = useState(false)
+  const [categories, setCategories] = useState<string[]>([])
 
   const { user, isFullyAuthenticated } = useAuth()
 
@@ -70,6 +83,7 @@ export default function ShopifyInventoryComparison() {
     if (isFullyAuthenticated) {
       fetchInventoryComparison()
       fetchStores()
+      fetchCategories()
     }
   }, [isFullyAuthenticated])
 
@@ -81,13 +95,13 @@ export default function ShopifyInventoryComparison() {
     }
   }, [searchTerm])
 
-  // Trigger refresh when filter status changes
+  // Trigger refresh when filters change
   useEffect(() => {
     if (isFullyAuthenticated) {
       setCurrentPage(1) // Reset to first page when filtering
       fetchInventoryComparison(1)
     }
-  }, [filterStatus])
+  }, [filterStatus, filterStore, filterCategory, sortBy, sortOrder])
 
   // Selection handlers
   const handleSelectProduct = (productId: number) => {
@@ -110,18 +124,49 @@ export default function ShopifyInventoryComparison() {
 
   const fetchStores = async () => {
     try {
-      const response = await axios.get('/api/stores')
+      const response = await axios.get('/api/stores/with-product-counts')
       setStores(response.data.filter((store: Store) => store.connected))
     } catch (error) {
       console.error('Failed to fetch stores:', error)
+      // Fallback to regular stores API
+      try {
+        const fallbackResponse = await axios.get('/api/stores')
+        setStores(fallbackResponse.data.filter((store: Store) => store.connected))
+      } catch (fallbackError) {
+        console.error('Failed to fetch stores (fallback):', fallbackError)
+      }
+    }
+  }
+
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get('/api/products/categories')
+      if (response.data.success) {
+        setCategories(response.data.categories)
+      }
+    } catch (error) {
+      console.error('Failed to fetch categories:', error)
+      // Extract categories from current comparisons as fallback
+      const uniqueCategories = Array.from(new Set(comparisons.map(c => c.product.category).filter(Boolean)))
+      setCategories(uniqueCategories)
     }
   }
 
   const fetchInventoryComparison = async (page = 1) => {
     try {
       setLoading(true)
-      const searchParam = searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : ''
-      const response = await axios.get(`/api/inventory/comparison?page=${page}&limit=${itemsPerPage}${searchParam}`)
+      const params = new URLSearchParams()
+      params.append('page', page.toString())
+      params.append('limit', itemsPerPage.toString())
+      
+      if (searchTerm) params.append('search', searchTerm)
+      if (filterStatus !== 'all') params.append('status', filterStatus)
+      if (filterStore !== 'all') params.append('store', filterStore)
+      if (filterCategory !== 'all') params.append('category', filterCategory)
+      if (sortBy) params.append('sortBy', sortBy)
+      if (sortOrder) params.append('sortOrder', sortOrder)
+      
+      const response = await axios.get(`/api/inventory/comparison?${params.toString()}`)
           if (response.data.success) {
             setComparisons(response.data.comparisons)
             setPagination(response.data.pagination)
@@ -428,47 +473,204 @@ export default function ShopifyInventoryComparison() {
 
           {/* Filters and Search */}
           <div className="bg-white rounded-lg shadow-sm border p-6">
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-              <div className="flex-1 max-w-md">
-                <input
-                  type="text"
-                  placeholder="Search products..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
+            <div className="space-y-4">
+              {/* Search Bar */}
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                <div className="flex-1 max-w-md">
+                  <input
+                    type="text"
+                    placeholder="Search products by name or SKU..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => fetchInventoryComparison(1)}
+                    className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Refresh
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-2 flex-wrap">
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="all">All Status</option>
-                  <option value="in_sync">In Sync</option>
-                  <option value="local_higher">Local Higher</option>
-                  <option value="shopify_higher">Shopify Higher</option>
-                  <option value="not_found">Not Found</option>
-                </select>
+
+              {/* Advanced Filters */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Status Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="in_sync">✅ In Sync</option>
+                    <option value="local_higher">📈 Local Higher</option>
+                    <option value="shopify_higher">📉 Shopify Higher</option>
+                    <option value="not_found">❌ Not Found</option>
+                  </select>
+                </div>
+
+                {/* Store Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Store</label>
+                  <select
+                    value={filterStore}
+                    onChange={(e) => setFilterStore(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="all">All Stores</option>
+                    {stores.map((store) => (
+                      <option key={store.id} value={store.id.toString()}>
+                        {store.store_name} ({store.stats?.total_products_synced || 0})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Category Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <select
+                    value={filterCategory}
+                    onChange={(e) => setFilterCategory(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="all">All Categories</option>
+                    {categories.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Sort Options */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
+                  <div className="flex gap-1">
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="flex-1 px-2 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
+                    >
+                      <option value="smart">🎯 Smart (Shopify products first)</option>
+                      <option value="difference">📊 Difference</option>
+                      <option value="product_name">📝 Product Name</option>
+                      <option value="sku">🏷️ SKU</option>
+                      <option value="local_quantity">📦 Local Qty</option>
+                      <option value="shopify_quantity">🛒 Shopify Qty</option>
+                    </select>
+                    <button
+                      onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                      className="px-2 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                      title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
+                    >
+                      <ArrowUpDown className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
               </div>
+
+              {/* Active Filters Display */}
+              {(filterStatus !== 'all' || filterStore !== 'all' || filterCategory !== 'all') && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-gray-600">Active filters:</span>
+                  {filterStatus !== 'all' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                      Status: {filterStatus.replace('_', ' ')}
+                      <button onClick={() => setFilterStatus('all')} className="ml-1 hover:text-blue-600">×</button>
+                    </span>
+                  )}
+                  {filterStore !== 'all' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                      Store: {stores.find(s => s.id.toString() === filterStore)?.store_name}
+                      <button onClick={() => setFilterStore('all')} className="ml-1 hover:text-green-600">×</button>
+                    </span>
+                  )}
+                  {filterCategory !== 'all' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">
+                      Category: {filterCategory}
+                      <button onClick={() => setFilterCategory('all')} className="ml-1 hover:text-purple-600">×</button>
+                    </span>
+                  )}
+                  <button
+                    onClick={() => {
+                      setFilterStatus('all')
+                      setFilterStore('all')
+                      setFilterCategory('all')
+                      setSortBy('smart')
+                      setSortOrder('desc')
+                    }}
+                    className="text-xs text-red-600 hover:text-red-800"
+                  >
+                    Clear all filters
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Connected Stores Info */}
+          {/* Enhanced Stores Display */}
           {stores.length > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-4">
                 <Store className="h-5 w-5 text-blue-600" />
-                <h3 className="font-medium text-blue-900">Connected Shopify Stores</h3>
+                <h3 className="font-medium text-gray-900">Connected Shopify Stores</h3>
+                <span className="text-sm text-gray-500">({stores.length} connected)</span>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {stores.map((store) => (
-                  <span
-                    key={store.id}
-                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                  >
-                    {store.store_name}
-                  </span>
+              
+              {/* Stores with products first */}
+              <div className="space-y-3">
+                {stores.filter(store => (store.stats?.total_products_synced || 0) > 0).map((store) => (
+                  <div key={store.id} className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <Store className="h-4 w-4 text-green-600" />
+                          <span className="font-medium text-green-900">{store.store_name}</span>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-green-700">
+                          <span>📦 {store.stats?.total_products_synced || 0} products</span>
+                          <span>✅ {store.stats?.successful_syncs || 0} synced</span>
+                          <span>📈 {store.stats?.sync_success_rate || 0}% success</span>
+                          {(store.stats?.recent_activity_count || 0) > 0 && (
+                            <span>🔥 {store.stats?.recent_activity_count || 0} recent</span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setFilterStore(store.id.toString())}
+                        className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded hover:bg-green-200"
+                      >
+                        Filter
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                
+                {/* Stores without products */}
+                {stores.filter(store => (store.stats?.total_products_synced || 0) === 0).map((store) => (
+                  <div key={store.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <Store className="h-4 w-4 text-gray-500" />
+                          <span className="font-medium text-gray-700">{store.store_name}</span>
+                        </div>
+                        <span className="text-sm text-gray-500">No products synced yet</span>
+                      </div>
+                      <button
+                        onClick={() => setFilterStore(store.id.toString())}
+                        className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded hover:bg-gray-200"
+                      >
+                        Filter
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
