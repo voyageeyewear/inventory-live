@@ -76,6 +76,14 @@ export default function ShopifyInventoryComparison() {
   const [auditData, setAuditData] = useState<any>(null)
   const [auditLoading, setAuditLoading] = useState(false)
   const [categories, setCategories] = useState<string[]>([])
+  const [syncProgress, setSyncProgress] = useState({
+    isVisible: false,
+    current: 0,
+    total: 0,
+    message: '',
+    successCount: 0,
+    errorCount: 0
+  })
 
   const { user, isFullyAuthenticated } = useAuth()
 
@@ -263,18 +271,12 @@ export default function ShopifyInventoryComparison() {
   }
 
   const syncAllToShopify = async () => {
-    const outOfSyncProducts = comparisons.filter(c => c.status !== 'in_sync')
-    
-    if (outOfSyncProducts.length === 0) {
-      toast.success('🎉 All products are already in sync!')
-      return
-    }
-
     const confirm = window.confirm(
-      `🚀 SYNC ALL TO SHOPIFY\n\n` +
-      `Products to sync: ${outOfSyncProducts.length}\n` +
+      `🚀 SYNC ALL PRODUCTS TO SHOPIFY\n\n` +
+      `Total products: ${stats?.totalProducts || 0}\n` +
       `Connected stores: ${stores.length}\n\n` +
-      `This will update all Shopify inventories to match local quantities.\n\n` +
+      `This will sync ALL products from local inventory to Shopify stores.\n` +
+      `This operation may take several minutes due to rate limiting.\n\n` +
       `Are you sure you want to continue?`
     )
 
@@ -282,41 +284,62 @@ export default function ShopifyInventoryComparison() {
 
     try {
       setSyncing(true)
-      let successCount = 0
-      let errorCount = 0
+      setSyncProgress({
+        isVisible: true,
+        current: 0,
+        total: stats?.totalProducts || 0,
+        message: 'Starting bulk sync...',
+        successCount: 0,
+        errorCount: 0
+      })
 
-      for (const comparison of outOfSyncProducts) {
-        try {
-          const response = await axios.post('/api/inventory/sync-to-shopify', {
-            productId: comparison.product.id,
-            sku: comparison.product.sku,
-            quantity: comparison.local_quantity
-          })
+      const response = await axios.post('/api/inventory/sync-all-to-shopify', {})
 
-          if (response.data.success) {
-            successCount++
-          } else {
-            errorCount++
-          }
-        } catch (error) {
-          errorCount++
-        }
-      }
-
-      if (successCount > 0 && errorCount === 0) {
-        toast.success(`✅ Successfully synced ${successCount} products to Shopify`)
-      } else if (successCount > 0 && errorCount > 0) {
-        toast(`⚠️ Partial sync: ${successCount} successful, ${errorCount} failed`, {
-          duration: 6000,
-          icon: '⚠️'
+      if (response.data.success) {
+        const summary = response.data.summary
+        setSyncProgress({
+          isVisible: true,
+          current: summary.total_products,
+          total: summary.total_products,
+          message: 'Sync completed!',
+          successCount: summary.successful_products,
+          errorCount: summary.failed_products
         })
-      } else {
-        toast.error(`❌ Sync failed: ${errorCount} errors occurred`)
-      }
 
-      fetchInventoryComparison(currentPage) // Refresh data
+        if (summary.successful_products === summary.total_products) {
+          toast.success(`✅ Successfully synced all ${summary.total_products} products to Shopify!`)
+        } else if (summary.successful_products > 0) {
+          toast(`⚠️ Partial sync: ${summary.successful_products}/${summary.total_products} products synced successfully`, {
+            duration: 8000,
+            icon: '⚠️'
+          })
+        } else {
+          toast.error(`❌ Sync failed: No products were synced successfully`)
+        }
+
+        // Hide progress modal after 3 seconds
+        setTimeout(() => {
+          setSyncProgress(prev => ({ ...prev, isVisible: false }))
+        }, 3000)
+
+        fetchInventoryComparison(currentPage) // Refresh data
+      } else {
+        throw new Error(response.data.message || 'Sync failed')
+      }
     } catch (error: any) {
-      toast.error('Failed to sync products to Shopify')
+      console.error('Bulk sync error:', error)
+      setSyncProgress(prev => ({
+        ...prev,
+        message: `Error: ${error.response?.data?.message || error.message}`,
+        isVisible: true
+      }))
+      
+      toast.error(`Failed to sync products: ${error.response?.data?.message || error.message}`)
+      
+      // Hide progress modal after 5 seconds on error
+      setTimeout(() => {
+        setSyncProgress(prev => ({ ...prev, isVisible: false }))
+      }, 5000)
     } finally {
       setSyncing(false)
     }
@@ -418,11 +441,11 @@ export default function ShopifyInventoryComparison() {
               )}
               <button
                 onClick={syncAllToShopify}
-                disabled={syncing || outOfSyncCount === 0}
+                disabled={syncing || (stats?.totalProducts || 0) === 0}
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
                 <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing...' : `Sync All (${outOfSyncCount})`}
+                {syncing ? 'Syncing...' : `Sync All Products (${stats?.totalProducts || 0})`}
               </button>
             </div>
           </div>
@@ -1010,6 +1033,51 @@ export default function ShopifyInventoryComparison() {
                       <p className="text-gray-500">Failed to load audit report</p>
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Sync Progress Modal */}
+          {syncProgress.isVisible && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Syncing to Shopify</h3>
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="h-5 w-5 text-blue-600 animate-spin" />
+                    <span className="text-sm text-gray-600">In Progress</span>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <div className="flex justify-between text-sm text-gray-600 mb-2">
+                    <span>{syncProgress.message}</span>
+                    <span>{syncProgress.current}/{syncProgress.total}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                      style={{ 
+                        width: syncProgress.total > 0 ? `${(syncProgress.current / syncProgress.total) * 100}%` : '0%' 
+                      }}
+                    ></div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <div className="text-green-600 font-semibold text-lg">{syncProgress.successCount}</div>
+                    <div className="text-green-700">Successful</div>
+                  </div>
+                  <div className="text-center p-3 bg-red-50 rounded-lg">
+                    <div className="text-red-600 font-semibold text-lg">{syncProgress.errorCount}</div>
+                    <div className="text-red-700">Failed</div>
+                  </div>
+                </div>
+
+                <div className="mt-4 text-xs text-gray-500 text-center">
+                  This operation may take several minutes due to Shopify rate limiting
                 </div>
               </div>
             </div>
