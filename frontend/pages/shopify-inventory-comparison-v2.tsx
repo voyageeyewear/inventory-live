@@ -6,7 +6,7 @@ import {
   Search, 
   Filter, 
   RefreshCw, 
-  Sync, 
+  RotateCcw, 
   FileText, 
   AlertTriangle,
   CheckCircle,
@@ -94,7 +94,7 @@ export default function ShopifyInventoryComparisonV2() {
   const router = useRouter()
   const [comparisons, setComparisons] = useState<Comparison[]>([])
   const [loading, setLoading] = useState(true)
-  const [syncing, setSyncing] = useState(false)
+  const [syncing, setRotateCcwing] = useState(false)
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set())
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -153,7 +153,7 @@ export default function ShopifyInventoryComparisonV2() {
   }
 
   const syncProductToShopify = async (product: Product) => {
-    console.log('🔄 Syncing product:', product)
+    console.log('🔄 RotateCcwing product:', product)
     
     const confirm = window.confirm(
       `🔄 SYNC TO SHOPIFY\n\n` +
@@ -167,7 +167,7 @@ export default function ShopifyInventoryComparisonV2() {
     if (!confirm) return
 
     try {
-      setSyncing(true)
+      setRotateCcwing(true)
       console.log('📤 Sending sync request for product:', product.sku)
       
       const response = await axios.post('/api/inventory/sync-to-shopify', {
@@ -176,7 +176,7 @@ export default function ShopifyInventoryComparisonV2() {
         quantity: product.quantity
       })
 
-      console.log('✅ Sync response:', response.data)
+      console.log('✅ RotateCcw response:', response.data)
 
       if (response.data.success) {
         const summary = response.data.summary
@@ -184,14 +184,14 @@ export default function ShopifyInventoryComparisonV2() {
         toast.success(`✅ Successfully synced "${product.product_name}" - Updated ${variantCount} variants to ${product.quantity} units each`)
         fetchInventoryComparison(currentPage) // Refresh data
       } else {
-        toast.error(`❌ Sync failed: ${response.data.message || 'Unknown error'}`)
+        toast.error(`❌ RotateCcw failed: ${response.data.message || 'Unknown error'}`)
       }
     } catch (error: any) {
-      console.error('❌ Sync error:', error)
+      console.error('❌ RotateCcw error:', error)
       const errorMessage = error.response?.data?.message || error.message || 'Failed to sync product'
-      toast.error(`❌ Sync failed: ${errorMessage}`)
+      toast.error(`❌ RotateCcw failed: ${errorMessage}`)
     } finally {
-      setSyncing(false)
+      setRotateCcwing(false)
     }
   }
 
@@ -223,7 +223,7 @@ export default function ShopifyInventoryComparisonV2() {
   const getStatusText = (status: string) => {
     switch (status) {
       case 'in_sync':
-        return 'In Sync'
+        return 'In RotateCcw'
       case 'not_found':
         return 'Not Found in Shopify'
       case 'local_higher':
@@ -282,8 +282,8 @@ export default function ShopifyInventoryComparisonV2() {
             disabled={loading || syncing}
             className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
           >
-            <Sync className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-            Sync All Products ({stats?.totalProducts || 0})
+            <RotateCcw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+            RotateCcw All Products ({stats?.totalProducts || 0})
           </button>
         </div>
 
@@ -328,7 +328,7 @@ export default function ShopifyInventoryComparisonV2() {
               <div className="flex items-center gap-3">
                 <CheckCircle className="h-8 w-8 text-green-600" />
                 <div>
-                  <p className="text-sm text-gray-600">In Sync</p>
+                  <p className="text-sm text-gray-600">In RotateCcw</p>
                   <p className="text-2xl font-bold text-green-600">
                     {comparisons.filter(c => c.status === 'in_sync').length}
                   </p>
@@ -383,7 +383,7 @@ export default function ShopifyInventoryComparisonV2() {
               <option value="not_found">Not Found in Shopify</option>
               <option value="local_higher">Local Higher</option>
               <option value="shopify_higher">Shopify Higher</option>
-              <option value="in_sync">In Sync</option>
+              <option value="in_sync">In RotateCcw</option>
             </select>
             
             <select
@@ -546,8 +546,8 @@ export default function ShopifyInventoryComparisonV2() {
                           disabled={syncing}
                           className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm"
                         >
-                          <Sync className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                          Sync All
+                          <RotateCcw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+                          RotateCcw All
                         </button>
                       )}
                       
