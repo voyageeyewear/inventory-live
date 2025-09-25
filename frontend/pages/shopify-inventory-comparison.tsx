@@ -215,7 +215,9 @@ export default function ShopifyInventoryComparison() {
       console.log('Sync response:', response.data)
 
       if (response.data.success) {
-        toast.success(`✅ Successfully synced "${product.product_name}" to Shopify`)
+        const summary = response.data.summary
+        const variantCount = summary.total_variants_updated || 0
+        toast.success(`✅ Successfully synced "${product.product_name}" - Updated ${variantCount} variants to ${product.quantity} units each`)
         fetchInventoryComparison(currentPage) // Refresh data
       } else {
         toast.error(`❌ Sync failed: ${response.data.message || 'Unknown error'}`)

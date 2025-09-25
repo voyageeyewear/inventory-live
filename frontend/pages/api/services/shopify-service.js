@@ -195,6 +195,137 @@ export const updateShopifyInventory = async (store, product) => {
   }
 }
 
+// Sync all variants of a SKU to the same quantity
+export const syncAllVariantsForSKU = async (store, sku, quantity) => {
+  try {
+    console.log(`Syncing all variants for SKU ${sku} to quantity ${quantity} in store ${store.store_name}`)
+    
+    // Search for product by SKU
+    const searchUrl = `https://${store.store_domain}/admin/api/2023-10/products.json?title=${encodeURIComponent(sku)}`
+    
+    const searchResponse = await shopifyFetch(searchUrl, {
+      method: 'GET',
+      headers: {
+        'X-Shopify-Access-Token': store.access_token,
+        'Content-Type': 'application/json'
+      }
+    }, store.id)
+
+    const searchData = await searchResponse.json()
+    
+    if (!searchData.products || searchData.products.length === 0) {
+      console.log(`No product found for SKU ${sku} in store ${store.store_name}`)
+      return {
+        success: false,
+        message: `Product with SKU ${sku} not found in Shopify`,
+        variantsUpdated: 0
+      }
+    }
+
+    // Find all products that match the SKU (could be multiple if SKU is in title)
+    const matchingProducts = searchData.products.filter(product => 
+      product.variants.some(variant => variant.sku === sku)
+    )
+
+    if (matchingProducts.length === 0) {
+      return {
+        success: false,
+        message: `No product with exact SKU ${sku} found`,
+        variantsUpdated: 0
+      }
+    }
+
+    let totalVariantsUpdated = 0
+    const results = []
+
+    // Process each matching product
+    for (const product of matchingProducts) {
+      // Find all variants with the matching SKU
+      const matchingVariants = product.variants.filter(variant => variant.sku === sku)
+      
+      for (const variant of matchingVariants) {
+        try {
+          console.log(`Updating variant ${variant.title || variant.id} for SKU ${sku}`)
+          
+          // Get current inventory level
+          const inventoryUrl = `https://${store.store_domain}/admin/api/2023-10/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
+          
+          const inventoryResponse = await shopifyFetch(inventoryUrl, {
+            method: 'GET',
+            headers: {
+              'X-Shopify-Access-Token': store.access_token,
+              'Content-Type': 'application/json'
+            }
+          }, store.id)
+
+          const inventoryData = await inventoryResponse.json()
+          
+          if (!inventoryData.inventory_levels || inventoryData.inventory_levels.length === 0) {
+            console.log(`No inventory level found for variant ${variant.id}`)
+            continue
+          }
+
+          const currentLevel = inventoryData.inventory_levels[0]
+          const previousQuantity = currentLevel.available
+
+          // Update inventory level for this variant
+          const updateUrl = `https://${store.store_domain}/admin/api/2023-10/inventory_levels/set.json`
+          
+          const updateResponse = await shopifyFetch(updateUrl, {
+            method: 'POST',
+            headers: {
+              'X-Shopify-Access-Token': store.access_token,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              location_id: currentLevel.location_id,
+              inventory_item_id: variant.inventory_item_id,
+              available: quantity
+            })
+          }, store.id)
+
+          const updateData = await updateResponse.json()
+          
+          totalVariantsUpdated++
+          results.push({
+            variantTitle: variant.title || variant.id,
+            variantId: variant.id,
+            previousQuantity: previousQuantity,
+            newQuantity: quantity,
+            success: true
+          })
+          
+          console.log(`Successfully updated variant ${variant.title || variant.id} from ${previousQuantity} to ${quantity}`)
+          
+        } catch (variantError) {
+          console.error(`Failed to update variant ${variant.title || variant.id}:`, variantError.message)
+          results.push({
+            variantTitle: variant.title || variant.id,
+            variantId: variant.id,
+            success: false,
+            error: variantError.message
+          })
+        }
+      }
+    }
+
+    return {
+      success: totalVariantsUpdated > 0,
+      message: `Updated ${totalVariantsUpdated} variants for SKU ${sku}`,
+      variantsUpdated: totalVariantsUpdated,
+      results: results
+    }
+
+  } catch (error) {
+    console.error(`Failed to sync all variants for SKU ${sku} in store ${store.store_name}:`, error.message)
+    return {
+      success: false,
+      message: error.message,
+      variantsUpdated: 0
+    }
+  }
+}
+
 // Batch sync function with proper rate limiting
 export const batchSyncProducts = async (store, products, onProgress = null) => {
   const results = []

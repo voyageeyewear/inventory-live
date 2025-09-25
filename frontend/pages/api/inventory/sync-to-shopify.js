@@ -1,5 +1,5 @@
 import { query } from '../../../lib/postgres'
-import { updateShopifyInventory } from '../../../services/shopifyService'
+import { updateShopifyInventory, syncAllVariantsForSKU } from '../../../services/shopifyService'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -34,27 +34,37 @@ export default async function handler(req, res) {
       })
     }
 
-    // Update inventory in all connected stores
+    // Update inventory in all connected stores - sync ALL variants for this SKU
     const results = []
     let successCount = 0
     let errorCount = 0
+    let totalVariantsUpdated = 0
 
     for (const store of stores) {
       try {
-        const result = await updateShopifyInventory(
-          store.shopify_domain,
-          store.access_token,
+        console.log(`Syncing all variants for SKU ${sku} to quantity ${quantity} in store ${store.store_name}`)
+        
+        const result = await syncAllVariantsForSKU(
+          {
+            id: store.id,
+            store_name: store.store_name,
+            store_domain: store.store_domain,
+            access_token: store.access_token
+          },
           sku,
           quantity
         )
 
         if (result.success) {
           successCount++
+          totalVariantsUpdated += result.variantsUpdated
           results.push({
             store_id: store.id,
             store_name: store.store_name,
             success: true,
-            message: `Updated to ${quantity} units`
+            message: `Updated ${result.variantsUpdated} variants to ${quantity} units each`,
+            variantsUpdated: result.variantsUpdated,
+            variantDetails: result.results
           })
         } else {
           errorCount++
@@ -62,7 +72,8 @@ export default async function handler(req, res) {
             store_id: store.id,
             store_name: store.store_name,
             success: false,
-            message: result.message || 'Update failed'
+            message: result.message || 'Update failed',
+            variantsUpdated: 0
           })
         }
       } catch (error) {
@@ -72,7 +83,8 @@ export default async function handler(req, res) {
           store_id: store.id,
           store_name: store.store_name,
           success: false,
-          message: error.message || 'Unknown error'
+          message: error.message || 'Unknown error',
+          variantsUpdated: 0
         })
       }
     }
@@ -109,13 +121,14 @@ export default async function handler(req, res) {
     res.status(200).json({
       success: successCount > 0,
       message: successCount === stores.length 
-        ? `Successfully synced to all ${stores.length} stores`
-        : `Synced to ${successCount}/${stores.length} stores`,
+        ? `Successfully synced ${totalVariantsUpdated} variants across all ${stores.length} stores`
+        : `Synced ${totalVariantsUpdated} variants to ${successCount}/${stores.length} stores`,
       results,
       summary: {
         total_stores: stores.length,
         successful: successCount,
-        failed: errorCount
+        failed: errorCount,
+        total_variants_updated: totalVariantsUpdated
       }
     })
 

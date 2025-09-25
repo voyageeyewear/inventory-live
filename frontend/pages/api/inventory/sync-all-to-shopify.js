@@ -1,5 +1,5 @@
 import { query } from '../../../lib/postgres'
-import { updateShopifyInventory } from '../../../services/shopifyService'
+import { updateShopifyInventory, syncAllVariantsForSKU } from '../../../services/shopifyService'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -61,12 +61,16 @@ export default async function handler(req, res) {
         totalProcessed++
         const productResults = []
 
-        // Sync to all connected stores
+        // Sync to all connected stores - update ALL variants for this SKU
         for (const store of stores) {
           try {
-            const result = await updateShopifyInventory(
-              store.shopify_domain,
-              store.access_token,
+            const result = await syncAllVariantsForSKU(
+              {
+                id: store.id,
+                store_name: store.store_name,
+                store_domain: store.store_domain,
+                access_token: store.access_token
+              },
               product.sku,
               product.quantity
             )
@@ -76,14 +80,16 @@ export default async function handler(req, res) {
                 store_id: store.id,
                 store_name: store.store_name,
                 success: true,
-                message: `Updated to ${product.quantity} units`
+                message: `Updated ${result.variantsUpdated} variants to ${product.quantity} units each`,
+                variantsUpdated: result.variantsUpdated
               })
             } else {
               productResults.push({
                 store_id: store.id,
                 store_name: store.store_name,
                 success: false,
-                message: result.message || 'Update failed'
+                message: result.message || 'Update failed',
+                variantsUpdated: 0
               })
             }
           } catch (error) {
@@ -92,7 +98,8 @@ export default async function handler(req, res) {
               store_id: store.id,
               store_name: store.store_name,
               success: false,
-              message: error.message || 'Unknown error'
+              message: error.message || 'Unknown error',
+              variantsUpdated: 0
             })
           }
         }
