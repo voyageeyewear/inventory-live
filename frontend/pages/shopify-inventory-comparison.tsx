@@ -12,7 +12,11 @@ import {
   Eye,
   TrendingUp,
   TrendingDown,
-  FileText
+  FileText,
+  Search,
+  Filter,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import axios from 'axios'
@@ -47,11 +51,29 @@ interface Store {
   }
 }
 
+interface Variant {
+  variantId: string
+  variantTitle: string
+  inventoryItemId: string
+  quantity: number
+  locationId: string
+}
+
+interface ShopifyQuantity {
+  quantity: number
+  store_name: string
+  variants: Variant[]
+  variant_count: number
+  found: boolean
+  error?: string
+}
+
 interface InventoryComparison {
   product: Product
   local_quantity: number
-  shopify_quantities: { [storeId: string]: { quantity: number, store_name: string } }
+  shopify_quantities: Record<string, ShopifyQuantity>
   total_shopify_quantity: number
+  total_variants_found: number
   difference: number
   status: 'in_sync' | 'local_higher' | 'shopify_higher' | 'not_found'
 }
@@ -84,6 +106,7 @@ export default function ShopifyInventoryComparison() {
     successCount: 0,
     errorCount: 0
   })
+  const [expandedProducts, setExpandedProducts] = useState<Set<number>>(new Set())
 
   const { user, isFullyAuthenticated } = useAuth()
 
@@ -93,56 +116,49 @@ export default function ShopifyInventoryComparison() {
       fetchStores()
       fetchCategories()
     }
-  }, [isFullyAuthenticated])
+  }, [isFullyAuthenticated, currentPage, searchTerm, filterStatus, filterStore, filterCategory, sortBy, sortOrder])
 
-  // Trigger search when searchTerm changes
-  useEffect(() => {
-    if (isFullyAuthenticated) {
-      setCurrentPage(1) // Reset to first page when searching
-      fetchInventoryComparison(1)
-    }
-  }, [searchTerm])
+  const fetchInventoryComparison = async () => {
+    try {
+      setLoading(true)
+      console.log('Fetching inventory comparison...')
+      
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: itemsPerPage.toString(),
+        search: searchTerm,
+        status: filterStatus,
+        store: filterStore,
+        category: filterCategory,
+        sortBy: sortBy,
+        sortOrder: sortOrder
+      })
 
-  // Trigger refresh when filters change
-  useEffect(() => {
-    if (isFullyAuthenticated) {
-      setCurrentPage(1) // Reset to first page when filtering
-      fetchInventoryComparison(1)
-    }
-  }, [filterStatus, filterStore, filterCategory, sortBy, sortOrder])
+      const response = await axios.get(`/api/inventory/comparison?${params}`)
+      console.log('Inventory comparison response:', response.data)
 
-  // Selection handlers
-  const handleSelectProduct = (productId: number) => {
-    const newSelected = new Set(selectedProducts)
-    if (newSelected.has(productId)) {
-      newSelected.delete(productId)
-    } else {
-      newSelected.add(productId)
-    }
-    setSelectedProducts(newSelected)
-  }
-
-  const handleSelectAll = () => {
-    if (selectedProducts.size === comparisons.length) {
-      setSelectedProducts(new Set())
-    } else {
-      setSelectedProducts(new Set(comparisons.map(c => c.product.id)))
+      if (response.data.success) {
+        setComparisons(response.data.comparisons)
+        setPagination(response.data.pagination)
+        setStats(response.data.stats)
+        setStores(response.data.stores)
+      }
+    } catch (error: any) {
+      console.error('Error fetching inventory comparison:', error)
+      toast.error('Failed to fetch inventory comparison')
+    } finally {
+      setLoading(false)
     }
   }
 
   const fetchStores = async () => {
     try {
-      const response = await axios.get('/api/stores/with-product-counts')
-      setStores(response.data.filter((store: Store) => store.connected))
-    } catch (error) {
-      console.error('Failed to fetch stores:', error)
-      // Fallback to regular stores API
-      try {
-        const fallbackResponse = await axios.get('/api/stores')
-        setStores(fallbackResponse.data.filter((store: Store) => store.connected))
-      } catch (fallbackError) {
-        console.error('Failed to fetch stores (fallback):', fallbackError)
+      const response = await axios.get('/api/stores')
+      if (response.data.success) {
+        setStores(response.data.stores)
       }
+    } catch (error) {
+      console.error('Error fetching stores:', error)
     }
   }
 
@@ -153,38 +169,7 @@ export default function ShopifyInventoryComparison() {
         setCategories(response.data.categories)
       }
     } catch (error) {
-      console.error('Failed to fetch categories:', error)
-      // Extract categories from current comparisons as fallback
-      const uniqueCategories = Array.from(new Set(comparisons.map(c => c.product.category).filter(Boolean)))
-      setCategories(uniqueCategories)
-    }
-  }
-
-  const fetchInventoryComparison = async (page = 1) => {
-    try {
-      setLoading(true)
-      const params = new URLSearchParams()
-      params.append('page', page.toString())
-      params.append('limit', itemsPerPage.toString())
-      
-      if (searchTerm) params.append('search', searchTerm)
-      if (filterStatus !== 'all') params.append('status', filterStatus)
-      if (filterStore !== 'all') params.append('store', filterStore)
-      if (filterCategory !== 'all') params.append('category', filterCategory)
-      if (sortBy) params.append('sortBy', sortBy)
-      if (sortOrder) params.append('sortOrder', sortOrder)
-      
-      const response = await axios.get(`/api/inventory/comparison?${params.toString()}`)
-          if (response.data.success) {
-            setComparisons(response.data.comparisons)
-            setPagination(response.data.pagination)
-            setStats(response.data.stats)
-          }
-    } catch (error: any) {
-      console.error('Error fetching inventory comparison:', error)
-      toast.error('Failed to fetch inventory comparison')
-    } finally {
-      setLoading(false)
+      console.error('Error fetching categories:', error)
     }
   }
 
@@ -192,11 +177,11 @@ export default function ShopifyInventoryComparison() {
     console.log('Syncing product:', product)
     
     const confirm = window.confirm(
-      `🔄 SYNC TO SHOPIFY\n\n` +
+      `🔄 SYNC ALL VARIANTS TO SHOPIFY\n\n` +
       `Product: ${product.product_name}\n` +
       `SKU: ${product.sku}\n` +
       `Local Quantity: ${product.quantity}\n\n` +
-      `This will update the Shopify inventory to match local quantity.\n\n` +
+      `This will update ALL variants of this SKU in Shopify to match local quantity.\n\n` +
       `Are you sure you want to continue?`
     )
 
@@ -218,7 +203,7 @@ export default function ShopifyInventoryComparison() {
         const summary = response.data.summary
         const variantCount = summary.total_variants_updated || 0
         toast.success(`✅ Successfully synced "${product.product_name}" - Updated ${variantCount} variants to ${product.quantity} units each`)
-        fetchInventoryComparison(currentPage) // Refresh data
+        fetchInventoryComparison() // Refresh data
       } else {
         toast.error(`❌ Sync failed: ${response.data.message || 'Unknown error'}`)
       }
@@ -239,10 +224,12 @@ export default function ShopifyInventoryComparison() {
       const response = await axios.get(`/api/products/audit-report?productId=${product.id}`)
       if (response.data.success) {
         setAuditData(response.data)
+      } else {
+        toast.error('Failed to load audit report')
       }
-    } catch (error: any) {
-      toast.error('Failed to fetch audit report: ' + (error.response?.data?.message || error.message))
-      setShowAuditModal(false)
+    } catch (error) {
+      console.error('Error fetching audit report:', error)
+      toast.error('Failed to load audit report')
     } finally {
       setAuditLoading(false)
     }
@@ -271,12 +258,12 @@ export default function ShopifyInventoryComparison() {
       })
 
       if (response.data.success) {
-        toast.success(`Successfully synced ${selectedProducts.size} selected products to Shopify`)
-        setSelectedProducts(new Set()) // Clear selection
-        fetchInventoryComparison() // Refresh data
+        toast.success(`Successfully synced ${selectedProducts.size} products to Shopify`)
+        setSelectedProducts(new Set())
+        fetchInventoryComparison()
       }
     } catch (error: any) {
-      toast.error('Failed to sync products: ' + (error.response?.data?.message || error.message))
+      toast.error('Failed to sync selected products')
     } finally {
       setSyncing(false)
     }
@@ -329,12 +316,11 @@ export default function ShopifyInventoryComparison() {
           toast.error(`❌ Sync failed: No products were synced successfully`)
         }
 
-        // Hide progress modal after 3 seconds
         setTimeout(() => {
           setSyncProgress(prev => ({ ...prev, isVisible: false }))
         }, 3000)
 
-        fetchInventoryComparison(currentPage) // Refresh data
+        fetchInventoryComparison()
       } else {
         throw new Error(response.data.message || 'Sync failed')
       }
@@ -348,7 +334,6 @@ export default function ShopifyInventoryComparison() {
       
       toast.error(`Failed to sync products: ${error.response?.data?.message || error.message}`)
       
-      // Hide progress modal after 5 seconds on error
       setTimeout(() => {
         setSyncProgress(prev => ({ ...prev, isVisible: false }))
       }, 5000)
@@ -357,15 +342,33 @@ export default function ShopifyInventoryComparison() {
     }
   }
 
-  // Filter comparisons by status only (search is now server-side)
-  const filteredComparisons = comparisons.filter(comparison => {
-    const matchesFilter = filterStatus === 'all' || comparison.status === filterStatus
-    return matchesFilter
-  })
+  const handleSelectProduct = (productId: number) => {
+    const newSelected = new Set(selectedProducts)
+    if (newSelected.has(productId)) {
+      newSelected.delete(productId)
+    } else {
+      newSelected.add(productId)
+    }
+    setSelectedProducts(newSelected)
+  }
 
-  // Use server-side pagination
-  const paginatedComparisons = filteredComparisons
-  const totalPages = pagination?.totalPages || 1
+  const handleSelectAll = () => {
+    if (selectedProducts.size === comparisons.length) {
+      setSelectedProducts(new Set())
+    } else {
+      setSelectedProducts(new Set(comparisons.map(c => c.product.id)))
+    }
+  }
+
+  const toggleProductExpansion = (productId: number) => {
+    const newExpanded = new Set(expandedProducts)
+    if (newExpanded.has(productId)) {
+      newExpanded.delete(productId)
+    } else {
+      newExpanded.add(productId)
+    }
+    setExpandedProducts(newExpanded)
+  }
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -412,7 +415,7 @@ export default function ShopifyInventoryComparison() {
     }
   }
 
-  // Calculate summary stats from pagination data
+  // Calculate summary stats
   const totalProducts = pagination?.total || 0
   const inSyncCount = comparisons.filter(c => c.status === 'in_sync').length
   const outOfSyncCount = comparisons.filter(c => c.status !== 'in_sync').length
@@ -429,12 +432,12 @@ export default function ShopifyInventoryComparison() {
               <h1 className="text-2xl font-bold text-gray-900">Shopify vs Local Inventory</h1>
               <p className="text-gray-600">Compare and sync inventory between local database and Shopify stores</p>
               <p className="text-sm text-blue-600 font-medium mt-1">
-                📊 Showing all {stats?.totalProducts || 0} products ({stats?.modifiedProducts || 0} need sync)
+                📊 Showing {pagination?.total || 0} products with multi-variant support
               </p>
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => fetchInventoryComparison(1)}
+                onClick={() => fetchInventoryComparison()}
                 disabled={loading}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
@@ -453,11 +456,11 @@ export default function ShopifyInventoryComparison() {
               )}
               <button
                 onClick={syncAllToShopify}
-                disabled={syncing || (stats?.totalProducts || 0) === 0}
+                disabled={syncing || totalProducts === 0}
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
                 <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing...' : `Sync All Products (${stats?.totalProducts || 0})`}
+                {syncing ? 'Syncing...' : `Sync All Products (${totalProducts})`}
               </button>
             </div>
           </div>
@@ -468,20 +471,9 @@ export default function ShopifyInventoryComparison() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total Products</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats?.totalProducts || 0}</p>
-                  <p className="text-xs text-gray-500 mt-1">{stats?.modifiedProducts || 0} need sync</p>
+                  <p className="text-2xl font-bold text-gray-900">{totalProducts}</p>
                 </div>
-                <Package className="h-8 w-8 text-blue-500" />
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">In Sync</p>
-                  <p className="text-2xl font-bold text-green-600">{inSyncCount}</p>
-                </div>
-                <CheckCircle className="h-8 w-8 text-green-500" />
+                <Package className="h-8 w-8 text-gray-400" />
               </div>
             </div>
 
@@ -491,7 +483,7 @@ export default function ShopifyInventoryComparison() {
                   <p className="text-sm font-medium text-gray-600">Local Higher</p>
                   <p className="text-2xl font-bold text-blue-600">{localHigherCount}</p>
                 </div>
-                <TrendingUp className="h-8 w-8 text-blue-500" />
+                <TrendingUp className="h-8 w-8 text-blue-400" />
               </div>
             </div>
 
@@ -501,556 +493,320 @@ export default function ShopifyInventoryComparison() {
                   <p className="text-sm font-medium text-gray-600">Shopify Higher</p>
                   <p className="text-2xl font-bold text-orange-600">{shopifyHigherCount}</p>
                 </div>
-                <TrendingDown className="h-8 w-8 text-orange-500" />
+                <TrendingDown className="h-8 w-8 text-orange-400" />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm border p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">In Sync</p>
+                  <p className="text-2xl font-bold text-green-600">{inSyncCount}</p>
+                </div>
+                <CheckCircle className="h-8 w-8 text-green-400" />
               </div>
             </div>
           </div>
 
-          {/* Filters and Search */}
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <div className="space-y-4">
-              {/* Search Bar */}
-              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                <div className="flex-1 max-w-md">
+          {/* Connected Stores */}
+          {stores.length > 0 && (
+            <div className="bg-white rounded-lg shadow-sm border p-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <Store className="h-5 w-5" />
+                Connected Shopify Stores ({stores.length} connected)
+              </h3>
+              <div className="flex flex-wrap gap-3">
+                {stores.map((store) => (
+                  <div key={store.id} className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg">
+                    <div className="h-2 w-2 bg-green-500 rounded-full"></div>
+                    <span className="text-sm font-medium text-gray-700">{store.store_name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Filters */}
+          <div className="bg-white rounded-lg shadow-sm border p-4">
+            <div className="flex flex-wrap gap-4">
+              <div className="flex-1 min-w-64">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <input
                     type="text"
                     placeholder="Search products by name or SKU..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => fetchInventoryComparison(1)}
-                    className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    Refresh
-                  </button>
-                </div>
               </div>
 
-              {/* Advanced Filters */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Status Filter */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                  <select
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="all">All Status</option>
-                    <option value="in_sync">✅ In Sync</option>
-                    <option value="local_higher">📈 Local Higher</option>
-                    <option value="shopify_higher">📉 Shopify Higher</option>
-                    <option value="not_found">❌ Not Found</option>
-                  </select>
-                </div>
+              <div className="flex gap-2">
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Status</option>
+                  <option value="in_sync">In Sync</option>
+                  <option value="local_higher">Local Higher</option>
+                  <option value="shopify_higher">Shopify Higher</option>
+                  <option value="not_found">Not Found</option>
+                </select>
 
-                {/* Store Filter */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Store</label>
-                  <select
-                    value={filterStore}
-                    onChange={(e) => setFilterStore(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="all">All Stores</option>
-                    {stores.map((store) => (
-                      <option key={store.id} value={store.id.toString()}>
-                        {store.store_name} ({store.stats?.total_products_synced || 0})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <select
+                  value={filterCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Categories</option>
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
 
-                {/* Category Filter */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                  <select
-                    value={filterCategory}
-                    onChange={(e) => setFilterCategory(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="all">All Categories</option>
-                    {categories.map((category) => (
-                      <option key={category} value={category}>
-                        {category}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="smart">Smart (Shopify products first)</option>
+                  <option value="difference">Difference</option>
+                  <option value="shopify_quantity">Shopify Quantity</option>
+                </select>
 
-                {/* Sort Options */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
-                  <div className="flex gap-1">
-                    <select
-                      value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value)}
-                      className="flex-1 px-2 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
-                    >
-                      <option value="smart">🎯 Smart (Shopify products first)</option>
-                      <option value="difference">📊 Difference</option>
-                      <option value="product_name">📝 Product Name</option>
-                      <option value="sku">🏷️ SKU</option>
-                      <option value="local_quantity">📦 Local Qty</option>
-                      <option value="shopify_quantity">🛒 Shopify Qty</option>
-                    </select>
-                    <button
-                      onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                      className="px-2 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
-                      title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
-                    >
-                      <ArrowUpDown className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
+                <button
+                  onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                  className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  {sortOrder === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
               </div>
-
-              {/* Active Filters Display */}
-              {(filterStatus !== 'all' || filterStore !== 'all' || filterCategory !== 'all') && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm text-gray-600">Active filters:</span>
-                  {filterStatus !== 'all' && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                      Status: {filterStatus.replace('_', ' ')}
-                      <button onClick={() => setFilterStatus('all')} className="ml-1 hover:text-blue-600">×</button>
-                    </span>
-                  )}
-                  {filterStore !== 'all' && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-                      Store: {stores.find(s => s.id.toString() === filterStore)?.store_name}
-                      <button onClick={() => setFilterStore('all')} className="ml-1 hover:text-green-600">×</button>
-                    </span>
-                  )}
-                  {filterCategory !== 'all' && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">
-                      Category: {filterCategory}
-                      <button onClick={() => setFilterCategory('all')} className="ml-1 hover:text-purple-600">×</button>
-                    </span>
-                  )}
-                  <button
-                    onClick={() => {
-                      setFilterStatus('all')
-                      setFilterStore('all')
-                      setFilterCategory('all')
-                      setSortBy('smart')
-                      setSortOrder('desc')
-                    }}
-                    className="text-xs text-red-600 hover:text-red-800"
-                  >
-                    Clear all filters
-                  </button>
-                </div>
-              )}
             </div>
           </div>
 
-          {/* Enhanced Stores Display */}
-          {stores.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Store className="h-5 w-5 text-blue-600" />
-                <h3 className="font-medium text-gray-900">Connected Shopify Stores</h3>
-                <span className="text-sm text-gray-500">({stores.length} connected)</span>
+          {/* Products List */}
+          <div className="bg-white rounded-lg shadow-sm border">
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
+                <span className="ml-2 text-gray-600">Loading inventory comparison...</span>
               </div>
-              
-              {/* Stores with products first */}
-              <div className="space-y-3">
-                {stores.filter(store => (store.stats?.total_products_synced || 0) > 0).map((store) => (
-                  <div key={store.id} className="bg-green-50 border border-green-200 rounded-lg p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                          <Store className="h-4 w-4 text-green-600" />
-                          <span className="font-medium text-green-900">{store.store_name}</span>
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-green-700">
-                          <span>📦 {store.stats?.total_products_synced || 0} products</span>
-                          <span>✅ {store.stats?.successful_syncs || 0} synced</span>
-                          <span>📈 {store.stats?.sync_success_rate || 0}% success</span>
-                          {(store.stats?.recent_activity_count || 0) > 0 && (
-                            <span>🔥 {store.stats?.recent_activity_count || 0} recent</span>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setFilterStore(store.id.toString())}
-                        className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded hover:bg-green-200"
-                      >
-                        Filter
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                
-                {/* Stores without products */}
-                {stores.filter(store => (store.stats?.total_products_synced || 0) === 0).map((store) => (
-                  <div key={store.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                          <Store className="h-4 w-4 text-gray-500" />
-                          <span className="font-medium text-gray-700">{store.store_name}</span>
-                        </div>
-                        <span className="text-sm text-gray-500">No products synced yet</span>
-                      </div>
-                      <button
-                        onClick={() => setFilterStore(store.id.toString())}
-                        className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded hover:bg-gray-200"
-                      >
-                        Filter
-                      </button>
-                    </div>
-                  </div>
-                ))}
+            ) : comparisons.length === 0 ? (
+              <div className="text-center py-12">
+                <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">No products found matching your criteria</p>
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="divide-y divide-gray-200">
+                {comparisons.map((comparison) => (
+                  <div key={comparison.product.id} className="p-4">
+                    <div className="flex items-start gap-4">
+                      {/* Selection Checkbox */}
+                      <div className="flex-shrink-0 pt-1">
+                        <input
+                          type="checkbox"
+                          checked={selectedProducts.has(comparison.product.id)}
+                          onChange={() => handleSelectProduct(comparison.product.id)}
+                          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                      </div>
 
-          {/* Results Summary */}
-          <div className="bg-white rounded-lg shadow-sm border p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-600">
-                Showing {paginatedComparisons.length} of {totalProducts} products
-                {pagination && ` (Page ${pagination.page} of ${pagination.totalPages})`}
-              </p>
-            </div>
-          </div>
-
-          {/* Comparison Table */}
-          <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      <input
-                        type="checkbox"
-                        checked={selectedProducts.size === comparisons.length && comparisons.length > 0}
-                        onChange={handleSelectAll}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Product
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      SKU
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Local Qty
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Shopify Qty
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Difference
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center">
-                        <div className="flex items-center justify-center">
-                          <RefreshCw className="h-6 w-6 animate-spin text-blue-500 mr-2" />
-                          <span className="text-gray-500">Loading inventory comparison...</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : paginatedComparisons.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center">
-                        <div className="text-gray-500">
-                          {searchTerm || filterStatus !== 'all' 
-                            ? 'No products match your filters' 
-                            : (
-                              <div className="flex flex-col items-center gap-2">
-                                <CheckCircle className="h-12 w-12 text-green-500" />
-                                <div className="text-lg font-medium text-green-600">All products are up to date!</div>
-                                <div className="text-sm text-gray-500">No modified products need syncing</div>
-                              </div>
-                            )}
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    paginatedComparisons.map((comparison) => (
-                      <tr key={comparison.product.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4">
-                          <input
-                            type="checkbox"
-                            checked={selectedProducts.has(comparison.product.id)}
-                            onChange={() => handleSelectProduct(comparison.product.id)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      {/* Product Image */}
+                      <div className="flex-shrink-0">
+                        {comparison.product.image_url ? (
+                          <img
+                            className="h-16 w-16 rounded-lg object-cover border border-gray-200"
+                            src={comparison.product.image_url}
+                            alt={comparison.product.product_name}
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none'
+                            }}
                           />
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center">
-                            {comparison.product.image_url && (
-                              <img
-                                className="h-10 w-10 rounded-lg object-cover mr-3"
-                                src={comparison.product.image_url}
-                                alt={comparison.product.product_name}
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none'
-                                }}
-                              />
-                            )}
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {comparison.product.product_name}
-                              </div>
+                        ) : (
+                          <div className="h-16 w-16 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                            <Package className="h-8 w-8 text-gray-400" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Product Details */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-sm font-medium text-gray-900 truncate">
+                              {comparison.product.product_name}
+                            </h3>
+                            <div className="flex items-center gap-4 mt-1">
+                              <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
+                                {comparison.product.sku}
+                              </span>
                               {comparison.product.category && (
-                                <div className="text-sm text-gray-500">{comparison.product.category}</div>
+                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                  {comparison.product.category}
+                                </span>
                               )}
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
-                          {comparison.product.sku}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-medium text-gray-900">
-                            {comparison.local_quantity}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="space-y-1">
-                            {Object.entries(comparison.shopify_quantities).map(([storeId, data]) => (
-                              <div key={storeId} className="text-sm">
-                                <span className="font-medium">{data.quantity}</span>
-                                <span className="text-gray-500 ml-1">({data.store_name})</span>
+
+                            {/* Inventory Comparison */}
+                            <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <div>
+                                <p className="text-xs text-gray-500">Local Quantity</p>
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {comparison.local_quantity}
+                                </p>
                               </div>
-                            ))}
-                            {Object.keys(comparison.shopify_quantities).length === 0 && (
-                              <span className="text-sm text-gray-500">Not found</span>
+                              <div>
+                                <p className="text-xs text-gray-500">Shopify Total</p>
+                                <p className="text-sm font-semibold text-blue-600">
+                                  {comparison.total_shopify_quantity}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-500">Variants Found</p>
+                                <p className="text-sm font-semibold text-purple-600">
+                                  {comparison.total_variants_found}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-500">Difference</p>
+                                <p className={`text-sm font-semibold ${
+                                  comparison.difference > 0 ? 'text-green-600' :
+                                  comparison.difference < 0 ? 'text-red-600' : 'text-gray-600'
+                                }`}>
+                                  {comparison.difference > 0 ? '+' : ''}{comparison.difference}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Store Details */}
+                            <div className="mt-3">
+                              {Object.entries(comparison.shopify_quantities).map(([storeId, storeData]) => (
+                                <div key={storeId} className="text-xs text-gray-600 mb-1">
+                                  <span className="font-medium">{storeData.store_name}:</span> {storeData.quantity} units
+                                  {storeData.variant_count > 1 && (
+                                    <span className="ml-2 text-purple-600">
+                                      ({storeData.variant_count} variants)
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Status and Actions */}
+                          <div className="flex flex-col items-end gap-2">
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(comparison.status)}`}>
+                              {getStatusIcon(comparison.status)}
+                              {getStatusText(comparison.status)}
+                            </span>
+
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => syncProductToShopify(comparison.product)}
+                                disabled={syncing || comparison.status === 'in_sync'}
+                                className={`flex items-center gap-1 px-2 py-1 text-xs rounded ${
+                                  comparison.status === 'in_sync' 
+                                    ? 'text-gray-400 cursor-not-allowed' 
+                                    : 'text-green-600 hover:text-green-900 hover:bg-green-50'
+                                } disabled:opacity-50`}
+                                title={comparison.status === 'in_sync' ? 'Already in sync' : 'Sync all variants to Shopify'}
+                              >
+                                <RefreshCw className="h-3 w-3" />
+                                Sync All
+                              </button>
+                              <button
+                                onClick={() => showAuditReport(comparison.product)}
+                                className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50"
+                                title="View audit report"
+                              >
+                                <FileText className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Variant Details (Expandable) */}
+                        {comparison.total_variants_found > 0 && (
+                          <div className="mt-3">
+                            <button
+                              onClick={() => toggleProductExpansion(comparison.product.id)}
+                              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
+                            >
+                              {expandedProducts.has(comparison.product.id) ? (
+                                <ChevronUp className="h-3 w-3" />
+                              ) : (
+                                <ChevronDown className="h-3 w-3" />
+                              )}
+                              View {comparison.total_variants_found} variant{comparison.total_variants_found > 1 ? 's' : ''}
+                            </button>
+
+                            {expandedProducts.has(comparison.product.id) && (
+                              <div className="mt-2 bg-gray-50 rounded-lg p-3">
+                                <h4 className="text-xs font-semibold text-gray-700 mb-2">Variant Details:</h4>
+                                <div className="space-y-2">
+                                  {Object.entries(comparison.shopify_quantities).map(([storeId, storeData]) => (
+                                    <div key={storeId}>
+                                      <p className="text-xs font-medium text-gray-600 mb-1">
+                                        {storeData.store_name}:
+                                      </p>
+                                      <div className="grid grid-cols-1 gap-1">
+                                        {storeData.variants.map((variant, index) => (
+                                          <div key={index} className="flex justify-between text-xs bg-white px-2 py-1 rounded">
+                                            <span>{variant.variantTitle}</span>
+                                            <span className="font-mono">{variant.quantity} units</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
                             )}
                           </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`text-sm font-medium ${
-                            comparison.difference > 0 ? 'text-blue-600' : 
-                            comparison.difference < 0 ? 'text-orange-600' : 'text-green-600'
-                          }`}>
-                            {comparison.difference > 0 ? '+' : ''}{comparison.difference}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(comparison.status)}`}>
-                            {getStatusIcon(comparison.status)}
-                            <span className="ml-1">{getStatusText(comparison.status)}</span>
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => syncProductToShopify(comparison.product)}
-                              disabled={syncing || comparison.status === 'in_sync'}
-                              className={`flex items-center gap-1 ${
-                                comparison.status === 'in_sync' 
-                                  ? 'text-gray-400 cursor-not-allowed' 
-                                  : 'text-green-600 hover:text-green-900'
-                              } disabled:opacity-50`}
-                              title={comparison.status === 'in_sync' ? 'Already in sync' : 'Sync to Shopify'}
-                            >
-                              <RefreshCw className="h-4 w-4" />
-                              Sync
-                            </button>
-                            <button
-                              onClick={() => showAuditReport(comparison.product)}
-                              className="text-blue-600 hover:text-blue-900 flex items-center gap-1"
-                              title="View Audit Report"
-                            >
-                              <FileText className="h-4 w-4" />
-                              Audit
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Pagination */}
-          {pagination && totalPages > 1 && (
-            <div className="bg-white rounded-lg shadow-sm border p-4">
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-gray-700">
-                  Page {pagination.page} of {totalPages}
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      const newPage = Math.max(1, currentPage - 1)
-                      setCurrentPage(newPage)
-                      fetchInventoryComparison(newPage)
-                    }}
-                    disabled={!pagination.hasPrev}
-                    className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50"
-                  >
-                    Previous
-                  </button>
-                  <button
-                    onClick={() => {
-                      const newPage = Math.min(totalPages, currentPage + 1)
-                      setCurrentPage(newPage)
-                      fetchInventoryComparison(newPage)
-                    }}
-                    disabled={!pagination.hasNext}
-                    className="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50"
-                  >
-                    Next
-                  </button>
-                </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Audit Modal */}
-          {showAuditModal && (
-            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-              <div className="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white">
-                <div className="mt-3">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-medium text-gray-900">
-                      Detailed Audit Report
-                    </h3>
+            {/* Pagination */}
+            {pagination && pagination.totalPages > 1 && (
+              <div className="bg-white px-4 py-3 border-t border-gray-200 sm:px-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center text-sm text-gray-700">
+                    Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
+                    {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
+                    {pagination.total} results
+                  </div>
+                  <div className="flex items-center gap-2 mt-3 sm:mt-0">
                     <button
-                      onClick={() => setShowAuditModal(false)}
-                      className="text-gray-400 hover:text-gray-600"
+                      onClick={() => setCurrentPage(pagination.page - 1)}
+                      disabled={!pagination.hasPrev}
+                      className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <XCircle className="h-6 w-6" />
+                      Previous
+                    </button>
+                    <span className="px-3 py-1 text-sm text-gray-700">
+                      Page {pagination.page} of {pagination.totalPages}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(pagination.page + 1)}
+                      disabled={!pagination.hasNext}
+                      className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
                     </button>
                   </div>
-
-                  {auditLoading ? (
-                    <div className="text-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                      <p className="mt-2 text-gray-500">Loading audit report...</p>
-                    </div>
-                  ) : auditData ? (
-                    <div className="space-y-6">
-                      {/* Product Info */}
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <h4 className="font-medium text-gray-900 mb-2">Product Information</h4>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div><span className="font-medium">Name:</span> {auditData.product.product_name}</div>
-                          <div><span className="font-medium">SKU:</span> {auditData.product.sku}</div>
-                          <div><span className="font-medium">Current Quantity:</span> {auditData.product.quantity}</div>
-                          <div><span className="font-medium">Category:</span> {auditData.product.category || 'N/A'}</div>
-                        </div>
-                      </div>
-
-                      {/* Statistics */}
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="bg-blue-50 rounded-lg p-4">
-                          <div className="text-2xl font-bold text-blue-600">{auditData.auditReport.statistics.sync.totalSyncs}</div>
-                          <div className="text-sm text-gray-600">Total Syncs</div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            ✅ {auditData.auditReport.statistics.sync.successfulSyncs} success, 
-                            ❌ {auditData.auditReport.statistics.sync.failedSyncs} failed
-                          </div>
-                        </div>
-                        <div className="bg-green-50 rounded-lg p-4">
-                          <div className="text-2xl font-bold text-green-600">{auditData.auditReport.statistics.quantity.totalChanges}</div>
-                          <div className="text-sm text-gray-600">Quantity Changes</div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            ⬆️ {auditData.auditReport.statistics.quantity.stockInCount} in, 
-                            ⬇️ {auditData.auditReport.statistics.quantity.stockOutCount} out
-                          </div>
-                        </div>
-                        <div className="bg-purple-50 rounded-lg p-4">
-                          <div className="text-2xl font-bold text-purple-600">{auditData.auditReport.statistics.scan.totalScans}</div>
-                          <div className="text-sm text-gray-600">Total Scans</div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            Last: {auditData.auditReport.statistics.scan.lastScanDate ? new Date(auditData.auditReport.statistics.scan.lastScanDate).toLocaleDateString() : 'Never'}
-                          </div>
-                        </div>
-                        <div className="bg-orange-50 rounded-lg p-4">
-                          <div className="text-2xl font-bold text-orange-600">{auditData.auditReport.statistics.mobile.totalActivities}</div>
-                          <div className="text-sm text-gray-600">Mobile Activities</div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            Last: {auditData.auditReport.statistics.mobile.lastActivityDate ? new Date(auditData.auditReport.statistics.mobile.lastActivityDate).toLocaleDateString() : 'Never'}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Recent Activity */}
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Sync History */}
-                        <div>
-                          <h4 className="font-medium text-gray-900 mb-3">Recent Sync History</h4>
-                          <div className="bg-gray-50 rounded-lg p-3 max-h-60 overflow-y-auto">
-                            {auditData.auditReport.syncHistory.length > 0 ? (
-                              <div className="space-y-2">
-                                {auditData.auditReport.syncHistory.slice(0, 10).map((sync: any, index: number) => (
-                                  <div key={index} className="text-sm border-b border-gray-200 pb-2">
-                                    <div className="flex justify-between items-center">
-                                      <span className={`font-medium ${sync.sync_status === 'success' ? 'text-green-600' : sync.sync_status === 'failed' ? 'text-red-600' : 'text-gray-600'}`}>
-                                        {sync.sync_status === 'success' ? '✅' : sync.sync_status === 'failed' ? '❌' : '⚪'} Sync
-                                      </span>
-                                      <span className="text-gray-500">{new Date(sync.created_at).toLocaleDateString()}</span>
-                                    </div>
-                                    <div className="text-gray-600">{sync.notes}</div>
-                                    <div className="text-gray-500">By: {sync.user_name || 'System'}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-gray-500 text-center py-4">No sync history found</p>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Quantity Changes */}
-                        <div>
-                          <h4 className="font-medium text-gray-900 mb-3">Recent Quantity Changes</h4>
-                          <div className="bg-gray-50 rounded-lg p-3 max-h-60 overflow-y-auto">
-                            {auditData.auditReport.quantityHistory.length > 0 ? (
-                              <div className="space-y-2">
-                                {auditData.auditReport.quantityHistory.slice(0, 10).map((change: any, index: number) => (
-                                  <div key={index} className="text-sm border-b border-gray-200 pb-2">
-                                    <div className="flex justify-between items-center">
-                                      <span className={`font-medium ${change.change_type === 'increase' ? 'text-green-600' : 'text-red-600'}`}>
-                                        {change.change_type === 'increase' ? '⬆️' : '⬇️'} {change.type.replace('_', ' ').toUpperCase()}
-                                      </span>
-                                      <span className="text-gray-500">{new Date(change.created_at).toLocaleDateString()}</span>
-                                    </div>
-                                    <div className="text-gray-600">Quantity: {change.quantity}</div>
-                                    <div className="text-gray-500">By: {change.user_name || 'System'}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-gray-500 text-center py-4">No quantity changes found</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <p className="text-gray-500">Failed to load audit report</p>
-                    </div>
-                  )}
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Sync Progress Modal */}
           {syncProgress.isVisible && (
@@ -1093,6 +849,123 @@ export default function ShopifyInventoryComparison() {
                 <div className="mt-4 text-xs text-gray-500 text-center">
                   This operation may take several minutes due to Shopify rate limiting
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Audit Modal */}
+          {showAuditModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Product Audit Report</h3>
+                  <button
+                    onClick={() => setShowAuditModal(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <XCircle className="h-6 w-6" />
+                  </button>
+                </div>
+
+                {auditLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
+                    <span className="ml-2 text-gray-600">Loading audit report...</span>
+                  </div>
+                ) : auditData ? (
+                  <div className="space-y-6">
+                    {/* Product Info */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="font-medium text-gray-900 mb-2">Product Information</h4>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-600">SKU:</span>
+                          <span className="ml-2 font-mono">{auditData.product.sku}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Current Quantity:</span>
+                          <span className="ml-2 font-semibold">{auditData.product.quantity}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Audit Summary */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="bg-blue-50 rounded-lg p-4 text-center">
+                        <div className="text-2xl font-bold text-blue-600">
+                          {auditData.auditReport?.totalSyncs || 0}
+                        </div>
+                        <div className="text-sm text-blue-700">Total Syncs</div>
+                      </div>
+                      <div className="bg-green-50 rounded-lg p-4 text-center">
+                        <div className="text-2xl font-bold text-green-600">
+                          {auditData.auditReport?.successfulSyncs || 0}
+                        </div>
+                        <div className="text-sm text-green-700">Successful</div>
+                      </div>
+                      <div className="bg-red-50 rounded-lg p-4 text-center">
+                        <div className="text-2xl font-bold text-red-600">
+                          {auditData.auditReport?.failedSyncs || 0}
+                        </div>
+                        <div className="text-sm text-red-700">Failed</div>
+                      </div>
+                    </div>
+
+                    {/* Sync History */}
+                    <div>
+                      <h4 className="font-medium text-gray-900 mb-3">Recent Sync History</h4>
+                      <div className="bg-gray-50 rounded-lg p-3 max-h-60 overflow-y-auto">
+                        {auditData.auditReport?.syncHistory?.length > 0 ? (
+                          <div className="space-y-2">
+                            {auditData.auditReport.syncHistory.slice(0, 10).map((sync: any, index: number) => (
+                              <div key={index} className="text-sm border-b border-gray-200 pb-2">
+                                <div className="flex justify-between items-center">
+                                  <span className={`font-medium ${sync.success ? 'text-green-600' : 'text-red-600'}`}>
+                                    {sync.success ? '✅' : '❌'} SYNC
+                                  </span>
+                                  <span className="text-gray-500">{new Date(sync.created_at).toLocaleDateString()}</span>
+                                </div>
+                                <div className="text-gray-600">Quantity: {sync.quantity}</div>
+                                <div className="text-gray-500">By: {sync.user_name || 'System'}</div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-gray-500 text-center py-4">No sync history found</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Quantity Changes */}
+                    <div>
+                      <h4 className="font-medium text-gray-900 mb-3">Recent Quantity Changes</h4>
+                      <div className="bg-gray-50 rounded-lg p-3 max-h-60 overflow-y-auto">
+                        {auditData.auditReport?.quantityHistory?.length > 0 ? (
+                          <div className="space-y-2">
+                            {auditData.auditReport.quantityHistory.slice(0, 10).map((change: any, index: number) => (
+                              <div key={index} className="text-sm border-b border-gray-200 pb-2">
+                                <div className="flex justify-between items-center">
+                                  <span className={`font-medium ${change.change_type === 'increase' ? 'text-green-600' : 'text-red-600'}`}>
+                                    {change.change_type === 'increase' ? '⬆️' : '⬇️'} {change.type.replace('_', ' ').toUpperCase()}
+                                  </span>
+                                  <span className="text-gray-500">{new Date(change.created_at).toLocaleDateString()}</span>
+                                </div>
+                                <div className="text-gray-600">Quantity: {change.quantity}</div>
+                                <div className="text-gray-500">By: {change.user_name || 'System'}</div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-gray-500 text-center py-4">No quantity changes found</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">Failed to load audit report</p>
+                  </div>
+                )}
               </div>
             </div>
           )}

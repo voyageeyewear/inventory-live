@@ -7,17 +7,22 @@ export default async function handler(req, res) {
   }
 
   try {
+    console.log('=== INVENTORY COMPARISON API CALLED ===')
+    
     const { 
       page = 1, 
-      limit = 50, 
+      limit = 25, 
       search = '', 
       status = 'all', 
       store = 'all', 
       category = 'all',
-      sortBy = 'difference',
+      sortBy = 'smart',
       sortOrder = 'desc'
     } = req.query
+    
     const offset = (parseInt(page) - 1) * parseInt(limit)
+
+    console.log('Request params:', { page, limit, search, status, store, category, sortBy, sortOrder })
 
     // Build search condition
     let searchCondition = ''
@@ -37,26 +42,8 @@ export default async function handler(req, res) {
       paramIndex++
     }
 
-    // Build sort order
-    let orderBy = 'product_name ASC'
-    switch (sortBy) {
-      case 'product_name':
-        orderBy = `product_name ${sortOrder.toUpperCase()}`
-        break
-      case 'sku':
-        orderBy = `sku ${sortOrder.toUpperCase()}`
-        break
-      case 'local_quantity':
-        orderBy = `quantity ${sortOrder.toUpperCase()}`
-        break
-      case 'smart':
-      case 'difference':
-      default:
-        orderBy = `product_name ASC` // Will be sorted after comparison
-        break
-    }
-
     // Get ALL active products from local database with optional search
+    console.log('Fetching products from local database...')
     const productsResult = await query(`
       SELECT 
         id, sku, product_name, category, price, quantity, 
@@ -65,11 +52,12 @@ export default async function handler(req, res) {
         last_modified, last_synced
       FROM products 
       WHERE is_active = true ${searchCondition}
-      ORDER BY ${orderBy}
+      ORDER BY product_name ASC
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `, [...queryParams, parseInt(limit), offset])
 
     const products = productsResult.rows
+    console.log(`Found ${products.length} products in local database`)
 
     // Get total count for pagination (with search filter)
     const countResult = await query(`
@@ -79,10 +67,12 @@ export default async function handler(req, res) {
       FROM products 
       WHERE is_active = true ${searchCondition}
     `, queryParams)
+    
     const totalProducts = parseInt(countResult.rows[0].all_total)
     const modifiedProducts = parseInt(countResult.rows[0].modified_total)
 
     // Get all connected stores
+    console.log('Fetching connected stores...')
     const storesResult = await query(`
       SELECT id, store_name, store_domain, shopify_domain, access_token
       FROM stores 
@@ -90,6 +80,7 @@ export default async function handler(req, res) {
     `)
 
     const stores = storesResult.rows
+    console.log(`Found ${stores.length} connected stores`)
 
     if (stores.length === 0) {
       return res.status(200).json({
@@ -128,43 +119,65 @@ export default async function handler(req, res) {
           store_name: store.store_name,
           store_domain: store.store_domain
         })),
-        message: 'No modified products found. All products are up to date!'
+        message: 'No products found matching criteria'
       })
     }
 
     // Fetch Shopify inventory for paginated products across all stores
+    console.log('Fetching Shopify inventory for products...')
     const comparisons = []
 
-    for (const product of products) {
+    for (let i = 0; i < products.length; i++) {
+      const product = products[i]
+      console.log(`Processing product ${i + 1}/${products.length}: ${product.sku} - ${product.product_name}`)
+      
       const shopifyQuantities = {}
       let totalShopifyQuantity = 0
+      let totalVariantsFound = 0
 
-      // Get inventory from each connected store with rate limiting
+      // Get inventory from each connected store
       for (const store of stores) {
         try {
+          console.log(`  Fetching from store: ${store.store_name}`)
+          
           const shopifyInventory = await getShopifyInventory(
             store.shopify_domain,
             store.access_token,
             product.sku
           )
 
+          console.log(`  Store ${store.store_name} result:`, {
+            found: shopifyInventory?.found,
+            total_quantity: shopifyInventory?.inventory_quantity,
+            variant_count: shopifyInventory?.total_variants,
+            variants: shopifyInventory?.variants?.map(v => `${v.variantTitle}: ${v.quantity}`)
+          })
+
           const quantity = shopifyInventory?.inventory_quantity || 0
           const variantCount = shopifyInventory?.total_variants || 0
+          
           shopifyQuantities[store.id] = {
             quantity,
             store_name: store.store_name,
             variants: shopifyInventory?.variants || [],
-            variant_count: variantCount
+            variant_count: variantCount,
+            found: shopifyInventory?.found || false
           }
+          
           totalShopifyQuantity += quantity
+          totalVariantsFound += variantCount
 
           // Add delay to prevent rate limiting
-          await new Promise(resolve => setTimeout(resolve, 100))
+          await new Promise(resolve => setTimeout(resolve, 200))
         } catch (error) {
-          console.error(`Failed to get inventory for ${product.sku} from ${store.store_name}:`, error)
+          console.error(`  Failed to get inventory for ${product.sku} from ${store.store_name}:`, error)
           shopifyQuantities[store.id] = {
             quantity: 0,
-            store_name: store.store_name
+            store_name: store.store_name,
+            variants: [],
+            variant_count: 0,
+            found: false,
+            error: error.message
           }
         }
       }
@@ -174,13 +187,21 @@ export default async function handler(req, res) {
       const difference = localQuantity - totalShopifyQuantity
 
       let status = 'in_sync'
-      if (Object.keys(shopifyQuantities).length === 0) {
+      if (totalVariantsFound === 0) {
         status = 'not_found'
       } else if (difference > 0) {
         status = 'local_higher'
       } else if (difference < 0) {
         status = 'shopify_higher'
       }
+
+      console.log(`  Final comparison for ${product.sku}:`, {
+        local_quantity: localQuantity,
+        total_shopify_quantity: totalShopifyQuantity,
+        total_variants_found: totalVariantsFound,
+        difference,
+        status
+      })
 
       comparisons.push({
         product: {
@@ -199,15 +220,19 @@ export default async function handler(req, res) {
         local_quantity: localQuantity,
         shopify_quantities: shopifyQuantities,
         total_shopify_quantity: totalShopifyQuantity,
+        total_variants_found: totalVariantsFound,
         difference,
         status
       })
     }
 
+    console.log('Completed inventory comparisons:', comparisons.length)
+
     // Apply status filter
     let filteredComparisons = comparisons
     if (status && status !== 'all') {
       filteredComparisons = comparisons.filter(comp => comp.status === status)
+      console.log(`Filtered by status '${status}': ${filteredComparisons.length} products`)
     }
 
     // Apply store filter
@@ -215,20 +240,30 @@ export default async function handler(req, res) {
       filteredComparisons = filteredComparisons.filter(comp => 
         comp.shopify_quantities[store] !== undefined
       )
+      console.log(`Filtered by store '${store}': ${filteredComparisons.length} products`)
     }
 
     // Apply smart sorting - prioritize products that exist in Shopify stores
-    if (sortBy === 'smart' || sortBy === 'difference') {
+    if (sortBy === 'smart') {
       filteredComparisons.sort((a, b) => {
-        // First priority: Products that exist in Shopify stores (have inventory > 0)
-        const aHasShopifyInventory = a.total_shopify_quantity > 0
-        const bHasShopifyInventory = b.total_shopify_quantity > 0
+        // First priority: Products that exist in Shopify stores (have variants)
+        const aHasVariants = a.total_variants_found > 0
+        const bHasVariants = b.total_variants_found > 0
         
-        if (aHasShopifyInventory && !bHasShopifyInventory) return -1
-        if (!aHasShopifyInventory && bHasShopifyInventory) return 1
+        if (aHasVariants && !bHasVariants) return -1
+        if (!aHasVariants && bHasVariants) return 1
         
-        // Second priority: Products with higher Shopify inventory
-        if (aHasShopifyInventory && bHasShopifyInventory) {
+        // Second priority: Products with more variants
+        if (aHasVariants && bHasVariants) {
+          if (sortOrder === 'desc') {
+            return b.total_variants_found - a.total_variants_found
+          } else {
+            return a.total_variants_found - b.total_variants_found
+          }
+        }
+        
+        // Third priority: Products with higher Shopify inventory
+        if (aHasVariants && bHasVariants) {
           if (sortOrder === 'desc') {
             return b.total_shopify_quantity - a.total_shopify_quantity
           } else {
@@ -236,7 +271,7 @@ export default async function handler(req, res) {
           }
         }
         
-        // Third priority: Products with larger differences (need more attention)
+        // Fourth priority: Products with larger differences (need more attention)
         const diffA = Math.abs(a.difference)
         const diffB = Math.abs(b.difference)
         if (sortOrder === 'desc') {
@@ -247,8 +282,8 @@ export default async function handler(req, res) {
       })
     }
 
-    // Apply specific sorting if requested (excluding smart and difference which are handled above)
-    if (sortBy === 'difference_only') {
+    // Apply difference sorting
+    if (sortBy === 'difference') {
       filteredComparisons.sort((a, b) => {
         const diffA = Math.abs(a.difference)
         const diffB = Math.abs(b.difference)
@@ -265,29 +300,32 @@ export default async function handler(req, res) {
       })
     }
 
-      res.status(200).json({
-        success: true,
-        comparisons: filteredComparisons,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total: totalProducts,
-          totalPages: Math.ceil(totalProducts / parseInt(limit)),
-          hasNext: offset + parseInt(limit) < totalProducts,
-          hasPrev: parseInt(page) > 1
-        },
-        stats: {
-          totalProducts,
-          modifiedProducts
-        },
-        stores: stores.map(store => ({
-          id: store.id,
-          store_name: store.store_name,
-          store_domain: store.store_domain
-        }))
-      })
+    console.log('=== INVENTORY COMPARISON API COMPLETED ===')
+
+    res.status(200).json({
+      success: true,
+      comparisons: filteredComparisons,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: totalProducts,
+        totalPages: Math.ceil(totalProducts / parseInt(limit)),
+        hasNext: offset + parseInt(limit) < totalProducts,
+        hasPrev: parseInt(page) > 1
+      },
+      stats: {
+        totalProducts,
+        modifiedProducts
+      },
+      stores: stores.map(store => ({
+        id: store.id,
+        store_name: store.store_name,
+        store_domain: store.store_domain
+      }))
+    })
 
   } catch (error) {
+    console.error('=== INVENTORY COMPARISON API ERROR ===')
     console.error('Error fetching inventory comparison:', error)
     res.status(500).json({
       success: false,
