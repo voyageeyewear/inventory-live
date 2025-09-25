@@ -149,9 +149,12 @@ export default async function handler(req, res) {
           )
 
           const quantity = shopifyInventory?.inventory_quantity || 0
+          const variantCount = shopifyInventory?.total_variants || 0
           shopifyQuantities[store.id] = {
             quantity,
-            store_name: store.store_name
+            store_name: store.store_name,
+            variants: shopifyInventory?.variants || [],
+            variant_count: variantCount
           }
           totalShopifyQuantity += quantity
 

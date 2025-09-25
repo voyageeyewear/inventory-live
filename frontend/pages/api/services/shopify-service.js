@@ -391,6 +391,165 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
   }
 }
 
+// Get total inventory quantity for all variants of a SKU
+export const getShopifyInventory = async (storeDomain, accessToken, sku) => {
+  try {
+    console.log(`Getting Shopify inventory for SKU ${sku} from store ${storeDomain}`)
+    
+    // Try multiple search approaches to find products with the SKU
+    let matchingProducts = []
+    
+    // Approach 1: Search by product title
+    try {
+      const titleSearchUrl = `https://${storeDomain}/admin/api/2023-10/products.json?title=${encodeURIComponent(sku)}`
+      
+      const titleResponse = await shopifyFetch(titleSearchUrl, {
+        method: 'GET',
+        headers: {
+          'X-Shopify-Access-Token': accessToken,
+          'Content-Type': 'application/json'
+        }
+      }, 'inventory-check')
+
+      const titleData = await titleResponse.json()
+      
+      if (titleData.products && titleData.products.length > 0) {
+        const titleMatches = titleData.products.filter(product => 
+          product.variants.some(variant => variant.sku === sku)
+        )
+        matchingProducts = matchingProducts.concat(titleMatches)
+      }
+    } catch (error) {
+      console.log('Title search failed for inventory check:', error.message)
+    }
+    
+    // Approach 2: Search by product handle
+    try {
+      const handleSearchUrl = `https://${storeDomain}/admin/api/2023-10/products.json?handle=${encodeURIComponent(sku)}`
+      
+      const handleResponse = await shopifyFetch(handleSearchUrl, {
+        method: 'GET',
+        headers: {
+          'X-Shopify-Access-Token': accessToken,
+          'Content-Type': 'application/json'
+        }
+      }, 'inventory-check')
+
+      const handleData = await handleResponse.json()
+      
+      if (handleData.products && handleData.products.length > 0) {
+        const handleMatches = handleData.products.filter(product => 
+          product.variants.some(variant => variant.sku === sku)
+        )
+        matchingProducts = matchingProducts.concat(handleMatches)
+      }
+    } catch (error) {
+      console.log('Handle search failed for inventory check:', error.message)
+    }
+    
+    // Approach 3: Get recent products
+    if (matchingProducts.length === 0) {
+      try {
+        const recentUrl = `https://${storeDomain}/admin/api/2023-10/products.json?limit=100`
+        
+        const recentResponse = await shopifyFetch(recentUrl, {
+          method: 'GET',
+          headers: {
+            'X-Shopify-Access-Token': accessToken,
+            'Content-Type': 'application/json'
+          }
+        }, 'inventory-check')
+
+        const recentData = await recentResponse.json()
+        
+        if (recentData.products && recentData.products.length > 0) {
+          const recentMatches = recentData.products.filter(product => 
+            product.variants.some(variant => variant.sku === sku)
+          )
+          matchingProducts = matchingProducts.concat(recentMatches)
+        }
+      } catch (error) {
+        console.log('Recent products search failed for inventory check:', error.message)
+      }
+    }
+    
+    // Remove duplicates
+    const uniqueProducts = matchingProducts.filter((product, index, self) => 
+      index === self.findIndex(p => p.id === product.id)
+    )
+
+    if (uniqueProducts.length === 0) {
+      console.log(`No products found with SKU ${sku} for inventory check`)
+      return {
+        inventory_quantity: 0,
+        variants: [],
+        found: false
+      }
+    }
+
+    let totalInventory = 0
+    const variants = []
+
+    // Get inventory for all variants with this SKU
+    for (const product of uniqueProducts) {
+      const matchingVariants = product.variants.filter(variant => variant.sku === sku)
+      
+      for (const variant of matchingVariants) {
+        try {
+          // Get current inventory level
+          const inventoryUrl = `https://${storeDomain}/admin/api/2023-10/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
+          
+          const inventoryResponse = await shopifyFetch(inventoryUrl, {
+            method: 'GET',
+            headers: {
+              'X-Shopify-Access-Token': accessToken,
+              'Content-Type': 'application/json'
+            }
+          }, 'inventory-check')
+
+          const inventoryData = await inventoryResponse.json()
+          
+          if (inventoryData.inventory_levels && inventoryData.inventory_levels.length > 0) {
+            const currentLevel = inventoryData.inventory_levels[0]
+            const variantQuantity = currentLevel.available || 0
+            
+            totalInventory += variantQuantity
+            variants.push({
+              variantId: variant.id,
+              variantTitle: variant.title || variant.id,
+              inventoryItemId: variant.inventory_item_id,
+              quantity: variantQuantity,
+              locationId: currentLevel.location_id
+            })
+            
+            console.log(`Variant ${variant.title || variant.id}: ${variantQuantity} units`)
+          }
+        } catch (variantError) {
+          console.error(`Failed to get inventory for variant ${variant.title || variant.id}:`, variantError.message)
+        }
+      }
+    }
+
+    console.log(`Total inventory for SKU ${sku}: ${totalInventory} units across ${variants.length} variants`)
+
+    return {
+      inventory_quantity: totalInventory,
+      variants: variants,
+      found: true,
+      total_variants: variants.length
+    }
+
+  } catch (error) {
+    console.error(`Failed to get Shopify inventory for SKU ${sku}:`, error.message)
+    return {
+      inventory_quantity: 0,
+      variants: [],
+      found: false,
+      error: error.message
+    }
+  }
+}
+
 // Batch sync function with proper rate limiting
 export const batchSyncProducts = async (store, products, onProgress = null) => {
   const results = []
