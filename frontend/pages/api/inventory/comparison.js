@@ -13,44 +13,13 @@ const getShopifyInventory = async (storeDomain, accessToken, sku) => {
     
     console.log('Searching through all products to find SKU:', sku)
     
-    // First, let's test if we can fetch any products at all
-    try {
-      const testUrl = `https://${storeDomain}/admin/api/2024-07/products.json?limit=1`
-      console.log('Testing API connection with URL:', testUrl)
-      
-      const testResponse = await shopifyFetch(testUrl, {
-        method: 'GET',
-        headers: {
-          'X-Shopify-Access-Token': accessToken,
-          'Content-Type': 'application/json'
-        }
-      }, 'test-connection')
-      
-      const testData = await testResponse.json()
-      console.log('API test response:', {
-        status: testResponse.status,
-        hasProducts: !!testData.products,
-        productCount: testData.products?.length || 0,
-        firstProduct: testData.products?.[0] ? {
-          id: testData.products[0].id,
-          title: testData.products[0].title,
-          variantCount: testData.products[0].variants?.length || 0
-        } : null
-      })
-    } catch (testError) {
-      console.error('API test failed:', testError.message)
-      return {
-        inventory_quantity: 0,
-        variants: [],
-        found: false,
-        error: `API test failed: ${testError.message}`
-      }
-    }
+    // Simple API test
+    console.log('Testing Shopify API connection for SKU:', sku)
     
     // Fetch products in batches until we find the SKU or exhaust all products
     while (hasMore && allProducts.length < 1000) { // Limit to prevent infinite loops
       try {
-        const url = `https://${storeDomain}/admin/api/2024-07/products.json?page=${page}&limit=250`
+        const url = `https://${storeDomain}/admin/api/2023-10/products.json?page=${page}&limit=250`
         
         const response = await shopifyFetch(url, {
           method: 'GET',
@@ -130,7 +99,7 @@ const getShopifyInventory = async (storeDomain, accessToken, sku) => {
         console.log(`Processing variant: "${variant.title}" (ID: ${variant.id}) with SKU ${variant.sku}`)
         try {
           // Get current inventory level
-          const inventoryUrl = `https://${storeDomain}/admin/api/2024-07/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
+          const inventoryUrl = `https://${storeDomain}/admin/api/2023-10/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
           
           const inventoryResponse = await shopifyFetch(inventoryUrl, {
             method: 'GET',

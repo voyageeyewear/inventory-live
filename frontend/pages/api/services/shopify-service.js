@@ -113,7 +113,7 @@ export const updateShopifyInventory = async (store, product) => {
     console.log(`Starting sync for product ${product.sku} to store ${store.store_name}`)
     
     // First, search for the product by SKU in Shopify
-    const searchUrl = `https://${store.store_domain}/admin/api/2024-07/products.json?fields=id,variants&limit=250`
+    const searchUrl = `https://${store.store_domain}/admin/api/2023-10/products.json?fields=id,variants&limit=250`
     
     const searchResponse = await shopifyFetch(searchUrl, {
       method: 'GET',
@@ -144,7 +144,7 @@ export const updateShopifyInventory = async (store, product) => {
     }
 
     // Get current inventory levels
-    const inventoryUrl = `https://${store.store_domain}/admin/api/2024-07/inventory_levels.json?inventory_item_ids=${targetVariant.inventory_item_id}`
+    const inventoryUrl = `https://${store.store_domain}/admin/api/2023-10/inventory_levels.json?inventory_item_ids=${targetVariant.inventory_item_id}`
     
     const inventoryResponse = await shopifyFetch(inventoryUrl, {
       method: 'GET',
@@ -159,7 +159,7 @@ export const updateShopifyInventory = async (store, product) => {
     const previousQuantity = currentLevel ? currentLevel.available : 0
 
     // Update inventory level
-    const updateUrl = `https://${store.store_domain}/admin/api/2024-07/inventory_levels/set.json`
+    const updateUrl = `https://${store.store_domain}/admin/api/2023-10/inventory_levels/set.json`
     
     const updateResponse = await shopifyFetch(updateUrl, {
       method: 'POST',
@@ -210,7 +210,7 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
     // Fetch products in batches until we find the SKU or exhaust all products
     while (hasMore && allProducts.length < 1000) { // Limit to prevent infinite loops
       try {
-        const url = `https://${store.store_domain}/admin/api/2024-07/products.json?page=${page}&limit=250`
+        const url = `https://${store.store_domain}/admin/api/2023-10/products.json?page=${page}&limit=250`
         
         const response = await shopifyFetch(url, {
           method: 'GET',
@@ -284,7 +284,7 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
           console.log(`Updating variant ${variant.title || variant.id} for SKU ${sku}`)
           
           // Get current inventory level
-          const inventoryUrl = `https://${store.store_domain}/admin/api/2024-07/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
+          const inventoryUrl = `https://${store.store_domain}/admin/api/2023-10/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
           
           const inventoryResponse = await shopifyFetch(inventoryUrl, {
             method: 'GET',
@@ -305,7 +305,7 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
           const previousQuantity = currentLevel.available
 
           // Update inventory level for this variant
-          const updateUrl = `https://${store.store_domain}/admin/api/2024-07/inventory_levels/set.json`
+          const updateUrl = `https://${store.store_domain}/admin/api/2023-10/inventory_levels/set.json`
           
           const updateResponse = await shopifyFetch(updateUrl, {
             method: 'POST',
@@ -377,7 +377,7 @@ export const getShopifyInventory = async (storeDomain, accessToken, sku) => {
     // Fetch products in batches until we find the SKU or exhaust all products
     while (hasMore && allProducts.length < 1000) { // Limit to prevent infinite loops
       try {
-        const url = `https://${storeDomain}/admin/api/2024-07/products.json?page=${page}&limit=250`
+        const url = `https://${storeDomain}/admin/api/2023-10/products.json?page=${page}&limit=250`
         
         const response = await shopifyFetch(url, {
           method: 'GET',
@@ -452,7 +452,7 @@ export const getShopifyInventory = async (storeDomain, accessToken, sku) => {
         console.log(`Processing variant: "${variant.title}" (ID: ${variant.id}) with SKU ${variant.sku}`)
         try {
           // Get current inventory level
-          const inventoryUrl = `https://${storeDomain}/admin/api/2024-07/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
+          const inventoryUrl = `https://${storeDomain}/admin/api/2023-10/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
           
           const inventoryResponse = await shopifyFetch(inventoryUrl, {
             method: 'GET',
@@ -555,7 +555,7 @@ export const batchSyncProducts = async (store, products, onProgress = null) => {
 // Test Shopify connection with rate limiting
 export const testShopifyConnection = async (store) => {
   try {
-    const testUrl = `https://${store.store_domain}/admin/api/2024-07/shop.json`
+    const testUrl = `https://${store.store_domain}/admin/api/2023-10/shop.json`
     
     const response = await shopifyFetch(testUrl, {
       method: 'GET',
