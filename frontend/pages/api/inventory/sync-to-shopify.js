@@ -6,9 +6,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method not allowed' })
   }
 
+  console.log('Individual sync API called with:', req.body)
   const { productId, sku, quantity } = req.body
 
   if (!productId || !sku || quantity === undefined) {
+    console.log('Missing required fields:', { productId, sku, quantity })
     return res.status(400).json({
       success: false,
       message: 'Product ID, SKU, and quantity are required'

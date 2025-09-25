@@ -189,6 +189,8 @@ export default function ShopifyInventoryComparison() {
   }
 
   const syncProductToShopify = async (product: Product) => {
+    console.log('Syncing product:', product)
+    
     const confirm = window.confirm(
       `🔄 SYNC TO SHOPIFY\n\n` +
       `Product: ${product.product_name}\n` +
@@ -202,18 +204,26 @@ export default function ShopifyInventoryComparison() {
 
     try {
       setSyncing(true)
+      console.log('Sending sync request for product:', product.sku)
+      
       const response = await axios.post('/api/inventory/sync-to-shopify', {
         productId: product.id,
         sku: product.sku,
         quantity: product.quantity
       })
 
+      console.log('Sync response:', response.data)
+
       if (response.data.success) {
-        toast.success(`Successfully synced "${product.product_name}" to Shopify`)
+        toast.success(`✅ Successfully synced "${product.product_name}" to Shopify`)
         fetchInventoryComparison(currentPage) // Refresh data
+      } else {
+        toast.error(`❌ Sync failed: ${response.data.message || 'Unknown error'}`)
       }
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to sync product')
+      console.error('Sync error:', error)
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to sync product'
+      toast.error(`❌ Sync failed: ${errorMessage}`)
     } finally {
       setSyncing(false)
     }
@@ -842,17 +852,19 @@ export default function ShopifyInventoryComparison() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center gap-2">
-                            {comparison.status !== 'in_sync' && comparison.status !== 'not_found' && (
-                              <button
-                                onClick={() => syncProductToShopify(comparison.product)}
-                                disabled={syncing}
-                                className="text-green-600 hover:text-green-900 flex items-center gap-1 disabled:opacity-50"
-                                title="Sync to Shopify"
-                              >
-                                <RefreshCw className="h-4 w-4" />
-                                Sync
-                              </button>
-                            )}
+                            <button
+                              onClick={() => syncProductToShopify(comparison.product)}
+                              disabled={syncing || comparison.status === 'in_sync'}
+                              className={`flex items-center gap-1 ${
+                                comparison.status === 'in_sync' 
+                                  ? 'text-gray-400 cursor-not-allowed' 
+                                  : 'text-green-600 hover:text-green-900'
+                              } disabled:opacity-50`}
+                              title={comparison.status === 'in_sync' ? 'Already in sync' : 'Sync to Shopify'}
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                              Sync
+                            </button>
                             <button
                               onClick={() => showAuditReport(comparison.product)}
                               className="text-blue-600 hover:text-blue-900 flex items-center gap-1"
