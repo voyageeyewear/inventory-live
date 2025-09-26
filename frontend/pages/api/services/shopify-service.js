@@ -208,9 +208,13 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
     console.log(`Searching through all products to find SKU ${sku} in store ${store.store_name}`)
     
     // Fetch products in batches until we find the SKU or exhaust all products
+    let pageInfo = null
     while (hasMore && allProducts.length < 1000) { // Limit to prevent infinite loops
       try {
-        const url = `https://${store.store_domain}/admin/api/2023-10/products.json?page=${page}&limit=250`
+        let url = `https://${store.store_domain}/admin/api/2023-10/products.json?limit=250`
+        if (pageInfo) {
+          url += `&page_info=${pageInfo}`
+        }
         
         const response = await shopifyFetch(url, {
           method: 'GET',
@@ -239,7 +243,20 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
           console.log(`Found ${productsWithSku.length} products with SKU ${sku} on page ${page}`)
         }
         
-        page++
+        // Check for next page using Link header (cursor-based pagination)
+        const linkHeader = response.headers.get('Link')
+        if (linkHeader && linkHeader.includes('rel="next"')) {
+          const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/)
+          if (nextMatch) {
+            const nextUrl = new URL(nextMatch[1])
+            pageInfo = nextUrl.searchParams.get('page_info')
+            page++
+          } else {
+            hasMore = false
+          }
+        } else {
+          hasMore = false
+        }
         
         // Add delay to respect rate limits
         await new Promise(resolve => setTimeout(resolve, 100))
