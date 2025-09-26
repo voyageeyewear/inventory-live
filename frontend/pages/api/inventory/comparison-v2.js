@@ -287,8 +287,14 @@ export default async function handler(req, res) {
     let paramIndex = 1
 
     if (search && search.trim()) {
-      searchCondition = `AND (LOWER(product_name) LIKE $${paramIndex} OR LOWER(sku) LIKE $${paramIndex})`
-      queryParams.push(`%${search.toLowerCase()}%`)
+      // If search looks like a SKU (alphanumeric with specific pattern), search by exact SKU
+      if (/^[A-Z0-9]+$/.test(search.trim())) {
+        searchCondition = `AND LOWER(sku) = $${paramIndex}`
+        queryParams.push(search.toLowerCase().trim())
+      } else {
+        searchCondition = `AND (LOWER(product_name) LIKE $${paramIndex} OR LOWER(sku) LIKE $${paramIndex})`
+        queryParams.push(`%${search.toLowerCase()}%`)
+      }
       paramIndex++
     }
 
