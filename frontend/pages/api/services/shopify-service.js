@@ -333,13 +333,58 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
             data: inventoryData
           })
           
+          let currentLevel
+          let previousQuantity = 0
+          
           if (!inventoryData.inventory_levels || inventoryData.inventory_levels.length === 0) {
-            console.log(`⚠️ No inventory level found for variant ${variant.id}`)
-            continue
+            console.log(`⚠️ No inventory level found for variant ${variant.id}, will create one`)
+            // Get the first available location for this store
+            const locationsUrl = `https://${store.store_domain}/admin/api/2023-10/locations.json`
+            const locationsResponse = await shopifyFetch(locationsUrl, {
+              method: 'GET',
+              headers: {
+                'X-Shopify-Access-Token': store.access_token,
+                'Content-Type': 'application/json'
+              }
+            }, store.id)
+            
+            const locationsData = await locationsResponse.json()
+            if (!locationsData.locations || locationsData.locations.length === 0) {
+              console.log(`❌ No locations found for store ${store.store_name}`)
+              continue
+            }
+            
+            const locationId = locationsData.locations[0].id
+            console.log(`📍 Using location ${locationId} for variant ${variant.id}`)
+            
+            // Create inventory level
+            const createUrl = `https://${store.store_domain}/admin/api/2023-10/inventory_levels.json`
+            const createResponse = await shopifyFetch(createUrl, {
+              method: 'POST',
+              headers: {
+                'X-Shopify-Access-Token': store.access_token,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                location_id: locationId,
+                inventory_item_id: variant.inventory_item_id,
+                available: 0
+              })
+            }, store.id)
+            
+            const createData = await createResponse.json()
+            console.log(`📊 Created inventory level:`, createData)
+            
+            currentLevel = {
+              location_id: locationId,
+              available: 0
+            }
+            previousQuantity = 0
+          } else {
+            currentLevel = inventoryData.inventory_levels[0]
+            previousQuantity = currentLevel.available
           }
-
-          const currentLevel = inventoryData.inventory_levels[0]
-          const previousQuantity = currentLevel.available
+          
           console.log(`📈 Current inventory for variant ${variant.id}: ${previousQuantity} units`)
 
           // Update inventory level for this variant
