@@ -520,12 +520,24 @@ export const getShopifyInventory = async (storeDomain, accessToken, sku) => {
     
     console.log(`Total products fetched: ${allProducts.length}`)
     
+    // Log some sample SKUs to see what we're getting
+    const sampleSkus = allProducts.slice(0, 10).map(p => 
+      p.variants.map(v => v.sku).filter(sku => sku)
+    ).flat()
+    console.log(`Sample SKUs found:`, sampleSkus.slice(0, 20))
+    
     // Find all products that have variants with the matching SKU
     const matchingProducts = allProducts.filter(product => 
       product.variants.some(variant => variant.sku && variant.sku.toLowerCase().trim() === sku.toLowerCase().trim())
     )
-
+    
     console.log(`Found ${matchingProducts.length} products with SKU ${sku}`)
+    
+    // Also check for partial matches
+    const partialMatches = allProducts.filter(product => 
+      product.variants.some(variant => variant.sku && variant.sku.toLowerCase().includes(sku.toLowerCase().substring(0, 5)))
+    )
+    console.log(`Found ${partialMatches.length} products with similar SKUs (first 5 chars)`)
 
     if (matchingProducts.length === 0) {
       console.log(`No products found with SKU ${sku} for inventory check`)
