@@ -1,5 +1,5 @@
 import { query } from '../../../lib/postgres'
-import { updateShopifyInventory, syncAllVariantsForSKU } from '../../../services/shopifyService'
+import { updateShopifyInventory, syncAllVariantsForSKU } from '../services/shopify-service'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
