@@ -232,7 +232,7 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
         
         // Check if we found any products with this SKU
         const productsWithSku = data.products.filter(product => 
-          product.variants.some(variant => variant.sku === sku)
+          product.variants.some(variant => variant.sku && variant.sku.toLowerCase().trim() === sku.toLowerCase().trim())
         )
         
         if (productsWithSku.length > 0) {
@@ -254,7 +254,7 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
     
     // Find all products that have variants with the matching SKU
     const matchingProducts = allProducts.filter(product => 
-      product.variants.some(variant => variant.sku === sku)
+      product.variants.some(variant => variant.sku && variant.sku.toLowerCase().trim() === sku.toLowerCase().trim())
     )
 
     console.log(`🎯 Found ${matchingProducts.length} products with SKU ${sku}`)
@@ -284,7 +284,7 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
       console.log(`📊 Product has ${product.variants.length} total variants`)
       
       // Find all variants with the matching SKU
-      const matchingVariants = product.variants.filter(variant => variant.sku === sku)
+      const matchingVariants = product.variants.filter(variant => variant.sku && variant.sku.toLowerCase().trim() === sku.toLowerCase().trim())
       console.log(`🎯 Found ${matchingVariants.length} variants with SKU ${sku}`)
       console.log(`📋 Variants to update:`, matchingVariants.map(v => ({
         id: v.id,
@@ -425,7 +425,7 @@ export const getShopifyInventory = async (storeDomain, accessToken, sku) => {
         
         // Check if we found any products with this SKU
         const productsWithSku = data.products.filter(product => 
-          product.variants.some(variant => variant.sku === sku)
+          product.variants.some(variant => variant.sku && variant.sku.toLowerCase().trim() === sku.toLowerCase().trim())
         )
         
         if (productsWithSku.length > 0) {
@@ -448,7 +448,7 @@ export const getShopifyInventory = async (storeDomain, accessToken, sku) => {
     
     // Find all products that have variants with the matching SKU
     const matchingProducts = allProducts.filter(product => 
-      product.variants.some(variant => variant.sku === sku)
+      product.variants.some(variant => variant.sku && variant.sku.toLowerCase().trim() === sku.toLowerCase().trim())
     )
 
     console.log(`Found ${matchingProducts.length} products with SKU ${sku}`)
@@ -471,7 +471,7 @@ export const getShopifyInventory = async (storeDomain, accessToken, sku) => {
       console.log(`Processing product: "${product.title}" (ID: ${product.id})`)
       console.log(`Product has ${product.variants.length} total variants`)
       
-      const matchingVariants = product.variants.filter(variant => variant.sku === sku)
+      const matchingVariants = product.variants.filter(variant => variant.sku && variant.sku.toLowerCase().trim() === sku.toLowerCase().trim())
       console.log(`Found ${matchingVariants.length} variants with SKU ${sku}`)
       
       for (const variant of matchingVariants) {
