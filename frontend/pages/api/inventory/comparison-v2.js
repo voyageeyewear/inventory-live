@@ -71,32 +71,78 @@ const getShopifyInventoryForSKU = async (storeDomain, accessToken, sku) => {
       }
     }
     
-    // Step 1: Search for products containing this SKU
-    const searchUrl = `https://${storeDomain}/admin/api/2023-10/products.json?limit=250`
+    // Step 1: Search for products containing this SKU with pagination
+    let allProducts = []
+    let pageInfo = null
+    let hasMore = true
+    let page = 1
+    const maxPages = 20 // Limit to prevent infinite loops
     
-    const response = await shopifyFetch(searchUrl, {
-      method: 'GET',
-      headers: {
-        'X-Shopify-Access-Token': accessToken,
-        'Content-Type': 'application/json'
+    console.log(`🔍 Starting paginated search for SKU: ${sku}`)
+    
+    while (hasMore && page <= maxPages) {
+      try {
+        let searchUrl = `https://${storeDomain}/admin/api/2023-10/products.json?limit=250`
+        if (pageInfo) {
+          searchUrl += `&page_info=${pageInfo}`
+        }
+        
+        console.log(`📄 Fetching page ${page}...`)
+        
+        const response = await shopifyFetch(searchUrl, {
+          method: 'GET',
+          headers: {
+            'X-Shopify-Access-Token': accessToken,
+            'Content-Type': 'application/json'
+          }
+        }, 'search')
+        
+        const data = await response.json()
+        
+        if (!data.products || data.products.length === 0) {
+          hasMore = false
+          break
+        }
+        
+        allProducts = allProducts.concat(data.products)
+        console.log(`📦 Page ${page}: Found ${data.products.length} products, total: ${allProducts.length}`)
+        
+        // Check if we found any products with this SKU on this page
+        const productsWithSku = data.products.filter(product => 
+          product.variants.some(variant => variant.sku && variant.sku.toLowerCase().trim() === sku.toLowerCase().trim())
+        )
+        
+        if (productsWithSku.length > 0) {
+          console.log(`🎯 Found ${productsWithSku.length} products with SKU ${sku} on page ${page}`)
+        }
+        
+        // Check for next page using Link header (cursor-based pagination)
+        const linkHeader = response.headers.get('Link')
+        if (linkHeader && linkHeader.includes('rel="next"')) {
+          const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/)
+          if (nextMatch) {
+            const nextUrl = new URL(nextMatch[1])
+            pageInfo = nextUrl.searchParams.get('page_info')
+            page++
+          } else {
+            hasMore = false
+          }
+        } else {
+          hasMore = false
+        }
+        
+        // Add delay to respect rate limits
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+      } catch (error) {
+        console.error(`Error fetching products page ${page}:`, error.message)
+        hasMore = false
       }
-    }, 'search')
+    }
     
-    const data = await response.json()
-    console.log(`📦 Found ${data.products?.length || 0} total products in store`)
-    console.log(`📊 API Response status: ${response.status}`)
-    console.log(`📋 Sample product:`, data.products?.[0] ? {
-      id: data.products[0].id,
-      title: data.products[0].title,
-      variantCount: data.products[0].variants?.length || 0,
-      firstVariant: data.products[0].variants?.[0] ? {
-        id: data.products[0].variants[0].id,
-        sku: data.products[0].variants[0].sku,
-        title: data.products[0].variants[0].title
-      } : null
-    } : 'No products found')
+    console.log(`📊 Total products fetched: ${allProducts.length}`)
     
-    if (!data.products || data.products.length === 0) {
+    if (allProducts.length === 0) {
       return {
         inventory_quantity: 0,
         variants: [],
@@ -106,7 +152,7 @@ const getShopifyInventoryForSKU = async (storeDomain, accessToken, sku) => {
     }
     
     // Step 2: Find products with matching SKU
-    const matchingProducts = data.products.filter(product => {
+    const matchingProducts = allProducts.filter(product => {
       return product.variants.some(variant => 
         variant.sku && variant.sku.toLowerCase().trim() === sku.toLowerCase().trim()
       )

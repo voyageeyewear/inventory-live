@@ -113,15 +113,6 @@ export default function ShopifyInventoryComparison() {
   const [unsyncedProducts, setUnsyncedProducts] = useState<any[]>([])
   const [showUnsynced, setShowUnsynced] = useState(false)
   const [loadingUnsynced, setLoadingUnsynced] = useState(false)
-  const [syncProgress, setSyncProgress] = useState({
-    isRunning: false,
-    current: 0,
-    total: 0,
-    completed: 0,
-    failed: 0,
-    currentProduct: '',
-    status: ''
-  })
 
   const { user, isFullyAuthenticated } = useAuth()
 
