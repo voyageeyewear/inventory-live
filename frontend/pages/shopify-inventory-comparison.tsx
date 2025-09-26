@@ -113,6 +113,15 @@ export default function ShopifyInventoryComparison() {
   const [unsyncedProducts, setUnsyncedProducts] = useState<any[]>([])
   const [showUnsynced, setShowUnsynced] = useState(false)
   const [loadingUnsynced, setLoadingUnsynced] = useState(false)
+  const [syncProgress, setSyncProgress] = useState({
+    isRunning: false,
+    current: 0,
+    total: 0,
+    completed: 0,
+    failed: 0,
+    currentProduct: '',
+    status: ''
+  })
 
   const { user, isFullyAuthenticated } = useAuth()
 
@@ -609,6 +618,41 @@ export default function ShopifyInventoryComparison() {
               </button>
             </div>
           </div>
+
+          {/* Real-time Sync Progress Bar */}
+          {syncProgress.isVisible && (
+            <div className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Sync Progress</h3>
+                <div className="text-sm text-gray-600">
+                  {syncProgress.current} / {syncProgress.total} products
+                </div>
+              </div>
+              
+              <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
+                <div 
+                  className="bg-green-600 h-3 rounded-full transition-all duration-300"
+                  style={{ 
+                    width: syncProgress.total > 0 ? `${(syncProgress.current / syncProgress.total) * 100}%` : '0%' 
+                  }}
+                ></div>
+              </div>
+              
+              <div className="flex justify-between items-center text-sm">
+                <div className="text-gray-600">
+                  {syncProgress.message}
+                </div>
+                <div className="flex gap-4">
+                  <span className="text-green-600 font-medium">
+                    ✅ {syncProgress.successCount} successful
+                  </span>
+                  <span className="text-red-600 font-medium">
+                    ❌ {syncProgress.errorCount} failed
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Summary Stats */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

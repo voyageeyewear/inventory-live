@@ -74,6 +74,19 @@ export default async function handler(req, res) {
             variantsUpdated: result.variantsUpdated,
             variantDetails: result.results
           })
+          
+          // Log successful sync to stock_logs
+          await query(`
+            INSERT INTO stock_logs (product_id, sku, product_name, type, quantity, notes, store_id, created_at)
+            VALUES ($1, $2, $3, 'sync', $4, $5, $6, NOW())
+          `, [
+            productId,
+            sku,
+            'Individual Product Sync',
+            quantity,
+            `SYNC SUCCESS: Updated ${result.variantsUpdated} variants to ${quantity} units in ${store.store_name}`,
+            store.id
+          ])
         } else {
           errorCount++
           results.push({
@@ -83,6 +96,19 @@ export default async function handler(req, res) {
             message: result.message || 'Update failed',
             variantsUpdated: 0
           })
+          
+          // Log failed sync to stock_logs
+          await query(`
+            INSERT INTO stock_logs (product_id, sku, product_name, type, quantity, notes, store_id, created_at)
+            VALUES ($1, $2, $3, 'sync', $4, $5, $6, NOW())
+          `, [
+            productId,
+            sku,
+            'Individual Product Sync',
+            quantity,
+            `SYNC FAILED: ${result.message || 'Update failed'} in ${store.store_name}`,
+            store.id
+          ])
         }
       } catch (error) {
         errorCount++
@@ -94,6 +120,19 @@ export default async function handler(req, res) {
           message: error.message || 'Unknown error',
           variantsUpdated: 0
         })
+        
+        // Log error sync to stock_logs
+        await query(`
+          INSERT INTO stock_logs (product_id, sku, product_name, type, quantity, notes, store_id, created_at)
+          VALUES ($1, $2, $3, 'sync', $4, $5, $6, NOW())
+        `, [
+          productId,
+          sku,
+          'Individual Product Sync',
+          quantity,
+          `SYNC ERROR: ${error.message || 'Unknown error'} in ${store.store_name}`,
+          store.id
+        ])
       }
     }
 

@@ -83,6 +83,19 @@ export default async function handler(req, res) {
                 message: `Updated ${result.variantsUpdated} variants to ${product.quantity} units each`,
                 variantsUpdated: result.variantsUpdated
               })
+              
+              // Log successful sync to stock_logs
+              await query(`
+                INSERT INTO stock_logs (product_id, sku, product_name, type, quantity, notes, store_id, created_at)
+                VALUES ($1, $2, $3, 'sync', $4, $5, $6, NOW())
+              `, [
+                product.id,
+                product.sku,
+                product.product_name,
+                product.quantity,
+                `SYNC SUCCESS: Updated ${result.variantsUpdated} variants to ${product.quantity} units in ${store.store_name}`,
+                store.id
+              ])
             } else {
               productResults.push({
                 store_id: store.id,
@@ -91,6 +104,19 @@ export default async function handler(req, res) {
                 message: result.message || 'Update failed',
                 variantsUpdated: 0
               })
+              
+              // Log failed sync to stock_logs
+              await query(`
+                INSERT INTO stock_logs (product_id, sku, product_name, type, quantity, notes, store_id, created_at)
+                VALUES ($1, $2, $3, 'sync', $4, $5, $6, NOW())
+              `, [
+                product.id,
+                product.sku,
+                product.product_name,
+                product.quantity,
+                `SYNC FAILED: ${result.message || 'Update failed'} in ${store.store_name}`,
+                store.id
+              ])
             }
           } catch (error) {
             console.error(`Failed to update inventory for ${product.sku} in ${store.store_name}:`, error)
@@ -101,6 +127,19 @@ export default async function handler(req, res) {
               message: error.message || 'Unknown error',
               variantsUpdated: 0
             })
+            
+            // Log error sync to stock_logs
+            await query(`
+              INSERT INTO stock_logs (product_id, sku, product_name, type, quantity, notes, store_id, created_at)
+              VALUES ($1, $2, $3, 'sync', $4, $5, $6, NOW())
+            `, [
+              product.id,
+              product.sku,
+              product.product_name,
+              product.quantity,
+              `SYNC ERROR: ${error.message || 'Unknown error'} in ${store.store_name}`,
+              store.id
+            ])
           }
         }
 
