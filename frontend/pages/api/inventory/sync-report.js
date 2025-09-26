@@ -12,25 +12,27 @@ export default async function handler(req, res) {
     const syncStats = await query(`
       SELECT 
         COUNT(*) as total_syncs,
-        COUNT(CASE WHEN success = true THEN 1 END) as successful_syncs,
-        COUNT(CASE WHEN success = false THEN 1 END) as failed_syncs,
+        COUNT(CASE WHEN notes LIKE '%SUCCESS%' OR notes LIKE '%SYNC%' OR type = 'sync' THEN 1 END) as successful_syncs,
+        COUNT(CASE WHEN notes LIKE '%FAILED%' OR notes LIKE '%ERROR%' THEN 1 END) as failed_syncs,
         COUNT(CASE WHEN created_at >= NOW() - INTERVAL '1 hour' THEN 1 END) as syncs_last_hour,
         COUNT(CASE WHEN created_at >= NOW() - INTERVAL '24 hours' THEN 1 END) as syncs_last_24h
-      FROM sync_audits 
+      FROM stock_logs 
       WHERE created_at >= NOW() - INTERVAL '7 days'
+        AND (type = 'sync' OR notes LIKE '%SYNC%')
     `)
 
     // Get recent sync activities
     const recentSyncs = await query(`
       SELECT 
-        sa.*,
+        sl.*,
         p.sku,
         p.product_name,
         p.category
-      FROM sync_audits sa
-      LEFT JOIN products p ON sa.product_id = p.id
-      WHERE sa.created_at >= NOW() - INTERVAL '24 hours'
-      ORDER BY sa.created_at DESC
+      FROM stock_logs sl
+      LEFT JOIN products p ON sl.product_id = p.id
+      WHERE sl.created_at >= NOW() - INTERVAL '24 hours'
+        AND (sl.type = 'sync' OR sl.notes LIKE '%SYNC%')
+      ORDER BY sl.created_at DESC
       LIMIT 50
     `)
 
@@ -38,15 +40,16 @@ export default async function handler(req, res) {
     const storeStats = await query(`
       SELECT 
         s.store_name,
-        COUNT(sa.id) as total_syncs,
-        COUNT(CASE WHEN sa.success = true THEN 1 END) as successful_syncs,
-        COUNT(CASE WHEN sa.success = false THEN 1 END) as failed_syncs,
+        COUNT(sl.id) as total_syncs,
+        COUNT(CASE WHEN sl.notes LIKE '%SUCCESS%' OR sl.notes LIKE '%SYNC%' OR sl.type = 'sync' THEN 1 END) as successful_syncs,
+        COUNT(CASE WHEN sl.notes LIKE '%FAILED%' OR sl.notes LIKE '%ERROR%' THEN 1 END) as failed_syncs,
         ROUND(
-          COUNT(CASE WHEN sa.success = true THEN 1 END) * 100.0 / NULLIF(COUNT(sa.id), 0), 2
+          COUNT(CASE WHEN sl.notes LIKE '%SUCCESS%' OR sl.notes LIKE '%SYNC%' OR sl.type = 'sync' THEN 1 END) * 100.0 / NULLIF(COUNT(sl.id), 0), 2
         ) as success_rate
       FROM stores s
-      LEFT JOIN sync_audits sa ON s.id = sa.store_id
-      WHERE sa.created_at >= NOW() - INTERVAL '24 hours'
+      LEFT JOIN stock_logs sl ON s.id = sl.store_id
+      WHERE sl.created_at >= NOW() - INTERVAL '24 hours'
+        AND (sl.type = 'sync' OR sl.notes LIKE '%SYNC%')
       GROUP BY s.id, s.store_name
       ORDER BY total_syncs DESC
     `)
@@ -55,15 +58,16 @@ export default async function handler(req, res) {
     const categoryStats = await query(`
       SELECT 
         p.category,
-        COUNT(sa.id) as total_syncs,
-        COUNT(CASE WHEN sa.success = true THEN 1 END) as successful_syncs,
-        COUNT(CASE WHEN sa.success = false THEN 1 END) as failed_syncs,
+        COUNT(sl.id) as total_syncs,
+        COUNT(CASE WHEN sl.notes LIKE '%SUCCESS%' OR sl.notes LIKE '%SYNC%' OR sl.type = 'sync' THEN 1 END) as successful_syncs,
+        COUNT(CASE WHEN sl.notes LIKE '%FAILED%' OR sl.notes LIKE '%ERROR%' THEN 1 END) as failed_syncs,
         ROUND(
-          COUNT(CASE WHEN sa.success = true THEN 1 END) * 100.0 / NULLIF(COUNT(sa.id), 0), 2
+          COUNT(CASE WHEN sl.notes LIKE '%SUCCESS%' OR sl.notes LIKE '%SYNC%' OR sl.type = 'sync' THEN 1 END) * 100.0 / NULLIF(COUNT(sl.id), 0), 2
         ) as success_rate
-      FROM sync_audits sa
-      LEFT JOIN products p ON sa.product_id = p.id
-      WHERE sa.created_at >= NOW() - INTERVAL '24 hours'
+      FROM stock_logs sl
+      LEFT JOIN products p ON sl.product_id = p.id
+      WHERE sl.created_at >= NOW() - INTERVAL '24 hours'
+        AND (sl.type = 'sync' OR sl.notes LIKE '%SYNC%')
         AND p.category IS NOT NULL
       GROUP BY p.category
       ORDER BY total_syncs DESC
@@ -74,9 +78,10 @@ export default async function handler(req, res) {
       SELECT 
         EXTRACT(HOUR FROM created_at) as hour,
         COUNT(*) as sync_count,
-        COUNT(CASE WHEN success = true THEN 1 END) as successful_count
-      FROM sync_audits 
+        COUNT(CASE WHEN notes LIKE '%SUCCESS%' OR notes LIKE '%SYNC%' OR type = 'sync' THEN 1 END) as successful_count
+      FROM stock_logs 
       WHERE created_at >= NOW() - INTERVAL '24 hours'
+        AND (type = 'sync' OR notes LIKE '%SYNC%')
       GROUP BY EXTRACT(HOUR FROM created_at)
       ORDER BY hour
     `)
@@ -84,14 +89,14 @@ export default async function handler(req, res) {
     // Get error analysis
     const errorAnalysis = await query(`
       SELECT 
-        error_message,
+        notes as error_message,
         COUNT(*) as error_count,
         COUNT(DISTINCT product_id) as affected_products
-      FROM sync_audits 
-      WHERE success = false 
+      FROM stock_logs 
+      WHERE notes LIKE '%FAILED%' OR notes LIKE '%ERROR%'
         AND created_at >= NOW() - INTERVAL '24 hours'
-        AND error_message IS NOT NULL
-      GROUP BY error_message
+        AND notes IS NOT NULL
+      GROUP BY notes
       ORDER BY error_count DESC
       LIMIT 10
     `)
@@ -102,28 +107,29 @@ export default async function handler(req, res) {
         p.sku,
         p.product_name,
         p.category,
-        COUNT(sa.id) as sync_count,
-        COUNT(CASE WHEN sa.success = true THEN 1 END) as successful_syncs,
-        MAX(sa.created_at) as last_sync
-      FROM sync_audits sa
-      LEFT JOIN products p ON sa.product_id = p.id
-      WHERE sa.created_at >= NOW() - INTERVAL '24 hours'
+        COUNT(sl.id) as sync_count,
+        COUNT(CASE WHEN sl.notes LIKE '%SUCCESS%' OR sl.notes LIKE '%SYNC%' OR sl.type = 'sync' THEN 1 END) as successful_syncs,
+        MAX(sl.created_at) as last_sync
+      FROM stock_logs sl
+      LEFT JOIN products p ON sl.product_id = p.id
+      WHERE sl.created_at >= NOW() - INTERVAL '24 hours'
+        AND (sl.type = 'sync' OR sl.notes LIKE '%SYNC%')
       GROUP BY p.id, p.sku, p.product_name, p.category
       ORDER BY sync_count DESC
       LIMIT 20
     `)
 
-    // Get variant sync details
+    // Get variant sync details (simplified since we don't have variants_updated field)
     const variantStats = await query(`
       SELECT 
-        sa.variants_updated,
+        1 as variants_updated,
         COUNT(*) as sync_count,
-        AVG(sa.variants_updated) as avg_variants_per_sync
-      FROM sync_audits sa
-      WHERE sa.created_at >= NOW() - INTERVAL '24 hours'
-        AND sa.success = true
-      GROUP BY sa.variants_updated
-      ORDER BY sa.variants_updated
+        1.0 as avg_variants_per_sync
+      FROM stock_logs 
+      WHERE created_at >= NOW() - INTERVAL '24 hours'
+        AND (type = 'sync' OR notes LIKE '%SYNC%')
+        AND (notes LIKE '%SUCCESS%' OR notes LIKE '%SYNC%')
+      GROUP BY 1
     `)
 
     const report = {
@@ -145,9 +151,9 @@ export default async function handler(req, res) {
         sku: sync.sku,
         product_name: sync.product_name,
         category: sync.category,
-        success: sync.success,
-        variants_updated: sync.variants_updated,
-        error_message: sync.error_message,
+        success: sync.notes?.includes('SUCCESS') || sync.notes?.includes('SYNC') || sync.type === 'sync',
+        variants_updated: 1, // Default to 1 since we don't track variants separately
+        error_message: sync.notes?.includes('FAILED') || sync.notes?.includes('ERROR') ? sync.notes : null,
         created_at: sync.created_at
       })),
       store_performance: storeStats.rows.map(store => ({
