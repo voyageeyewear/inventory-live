@@ -107,7 +107,7 @@ export default function ShopifyInventoryComparison() {
     errorCount: 0
   })
   const [expandedProducts, setExpandedProducts] = useState<Set<number>>(new Set())
-  const [syncReport, setSyncReport] = useState(null)
+  const [syncReport, setSyncReport] = useState<any>(null)
   const [showReport, setShowReport] = useState(false)
   const [loadingReport, setLoadingReport] = useState(false)
 
