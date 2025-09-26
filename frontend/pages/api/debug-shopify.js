@@ -1,5 +1,5 @@
 import { query } from '../../lib/postgres'
-import { shopifyFetch } from '../services/shopifyService'
+import { shopifyFetch } from './services/shopify-service'
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
