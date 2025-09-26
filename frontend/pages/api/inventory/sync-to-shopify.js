@@ -42,7 +42,13 @@ export default async function handler(req, res) {
 
     for (const store of stores) {
       try {
-        console.log(`Syncing all variants for SKU ${sku} to quantity ${quantity} in store ${store.store_name}`)
+        console.log(`🔄 Syncing all variants for SKU ${sku} to quantity ${quantity} in store ${store.store_name}`)
+        console.log(`📊 Store details:`, {
+          id: store.id,
+          store_name: store.store_name,
+          store_domain: store.store_domain,
+          access_token_length: store.access_token?.length
+        })
         
         const result = await syncAllVariantsForSKU(
           {
@@ -54,6 +60,8 @@ export default async function handler(req, res) {
           sku,
           quantity
         )
+        
+        console.log(`📋 Sync result for ${sku}:`, result)
 
         if (result.success) {
           successCount++
