@@ -110,6 +110,9 @@ export default function ShopifyInventoryComparison() {
   const [syncReport, setSyncReport] = useState<any>(null)
   const [showReport, setShowReport] = useState(false)
   const [loadingReport, setLoadingReport] = useState(false)
+  const [unsyncedProducts, setUnsyncedProducts] = useState<any[]>([])
+  const [showUnsynced, setShowUnsynced] = useState(false)
+  const [loadingUnsynced, setLoadingUnsynced] = useState(false)
 
   const { user, isFullyAuthenticated } = useAuth()
 
@@ -238,15 +241,17 @@ export default function ShopifyInventoryComparison() {
     }
   }
 
-  const syncSelectedToShopify = async () => {
-    if (selectedProducts.size === 0) {
+  const syncSelectedToShopify = async (productIds?: number[]) => {
+    const productsToSync = productIds || Array.from(selectedProducts)
+    
+    if (productsToSync.length === 0) {
       toast.error('No products selected')
       return
     }
 
-    const selectedComparisons = comparisons.filter(c => selectedProducts.has(c.product.id))
+    const selectedComparisons = comparisons.filter(c => productsToSync.includes(c.product.id))
     
-    if (!window.confirm(`Sync ${selectedProducts.size} selected products to all connected Shopify stores?`)) {
+    if (!window.confirm(`Sync ${productsToSync.length} selected products to all connected Shopify stores?`)) {
       return
     }
 
@@ -261,7 +266,7 @@ export default function ShopifyInventoryComparison() {
       })
 
       if (response.data.success) {
-        toast.success(`Successfully synced ${selectedProducts.size} products to Shopify`)
+        toast.success(`Successfully synced ${productsToSync.length} products to Shopify`)
         setSelectedProducts(new Set())
         fetchInventoryComparison()
       }
@@ -452,6 +457,48 @@ export default function ShopifyInventoryComparison() {
     toast.success('Sync report downloaded successfully!')
   }
 
+  const fetchUnsyncedProducts = async () => {
+    setLoadingUnsynced(true)
+    try {
+      const response = await axios.get('/api/products/needs-sync')
+      setUnsyncedProducts(response.data.products || [])
+      setShowUnsynced(true)
+      toast.success(`Found ${response.data.products?.length || 0} products that need syncing`)
+    } catch (error: any) {
+      console.error('Error fetching unsynced products:', error)
+      toast.error('Failed to fetch unsynced products')
+    } finally {
+      setLoadingUnsynced(false)
+    }
+  }
+
+  const downloadUnsyncedReport = () => {
+    if (!unsyncedProducts.length) return
+
+    // Create CSV content
+    let csvContent = "Unsynced Products Report - Generated at " + new Date().toLocaleString() + "\n\n"
+    
+    csvContent += "UNSYNCED PRODUCTS\n"
+    csvContent += "SKU,Product Name,Category,Local Quantity,Needs Sync,Last Modified,Last Synced,Sync Status\n"
+    
+    unsyncedProducts.forEach((product: any) => {
+      csvContent += `"${product.sku}","${product.product_name}","${product.category || 'N/A'}","${product.quantity}","${product.needs_sync ? 'Yes' : 'No'}","${product.last_modified ? new Date(product.last_modified).toLocaleString() : 'N/A'}","${product.last_synced ? new Date(product.last_synced).toLocaleString() : 'Never'}","${product.sync_status}"\n`
+    })
+
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `unsynced-products-${new Date().toISOString().split('T')[0]}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    
+    toast.success('Unsynced products report downloaded successfully!')
+  }
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'in_sync':
@@ -528,7 +575,7 @@ export default function ShopifyInventoryComparison() {
               </button>
               {selectedProducts.size > 0 && (
                 <button
-                  onClick={syncSelectedToShopify}
+                  onClick={() => syncSelectedToShopify()}
                   disabled={syncing}
                   className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
                 >
@@ -543,6 +590,14 @@ export default function ShopifyInventoryComparison() {
               >
                 <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
                 {syncing ? 'Syncing...' : `Sync All Products (${totalProducts})`}
+              </button>
+              <button
+                onClick={fetchUnsyncedProducts}
+                disabled={loadingUnsynced}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+              >
+                <AlertTriangle className={`h-4 w-4 ${loadingUnsynced ? 'animate-pulse' : ''}`} />
+                {loadingUnsynced ? 'Checking...' : 'Check Unsynced'}
               </button>
               <button
                 onClick={generateSyncReport}
@@ -1259,6 +1314,128 @@ export default function ShopifyInventoryComparison() {
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Unsynced Products Modal */}
+        {showUnsynced && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-6xl mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Unsynced Products ({unsyncedProducts.length})
+                </h2>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={downloadUnsyncedReport}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    <FileText className="h-4 w-4" />
+                    Download CSV
+                  </button>
+                  <button
+                    onClick={() => setShowUnsynced(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <XCircle className="h-6 w-6" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {/* Summary Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-orange-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-orange-600">{unsyncedProducts.length}</div>
+                    <div className="text-sm text-orange-600">Total Unsynced</div>
+                  </div>
+                  <div className="bg-red-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-red-600">
+                      {unsyncedProducts.filter(p => p.sync_status === 'Never synced').length}
+                    </div>
+                    <div className="text-sm text-red-600">Never Synced</div>
+                  </div>
+                  <div className="bg-yellow-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-yellow-600">
+                      {unsyncedProducts.filter(p => p.sync_status === 'Modified since last sync').length}
+                    </div>
+                    <div className="text-sm text-yellow-600">Modified</div>
+                  </div>
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {unsyncedProducts.reduce((sum, p) => sum + (p.quantity || 0), 0)}
+                    </div>
+                    <div className="text-sm text-blue-600">Total Quantity</div>
+                  </div>
+                </div>
+
+                {/* Products Table */}
+                <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100 sticky top-0">
+                      <tr>
+                        <th className="text-left p-2 font-semibold">SKU</th>
+                        <th className="text-left p-2 font-semibold">Product Name</th>
+                        <th className="text-left p-2 font-semibold">Category</th>
+                        <th className="text-left p-2 font-semibold">Quantity</th>
+                        <th className="text-left p-2 font-semibold">Status</th>
+                        <th className="text-left p-2 font-semibold">Last Modified</th>
+                        <th className="text-left p-2 font-semibold">Last Synced</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {unsyncedProducts.map((product: any, index: number) => (
+                        <tr key={index} className="border-b border-gray-200 hover:bg-gray-50">
+                          <td className="p-2 font-medium">{product.sku}</td>
+                          <td className="p-2">{product.product_name}</td>
+                          <td className="p-2">{product.category || 'N/A'}</td>
+                          <td className="p-2">{product.quantity || 0}</td>
+                          <td className="p-2">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              product.sync_status === 'Never synced' 
+                                ? 'bg-red-100 text-red-800'
+                                : product.sync_status === 'Modified since last sync'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {product.sync_status}
+                            </span>
+                          </td>
+                          <td className="p-2 text-gray-600">
+                            {product.last_modified ? new Date(product.last_modified).toLocaleDateString() : 'N/A'}
+                          </td>
+                          <td className="p-2 text-gray-600">
+                            {product.last_synced ? new Date(product.last_synced).toLocaleDateString() : 'Never'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex justify-center gap-4 pt-4">
+                  <button
+                    onClick={() => {
+                      // Sync all unsynced products
+                      const productIds = unsyncedProducts.map(p => p.id)
+                      syncSelectedToShopify(productIds)
+                      setShowUnsynced(false)
+                    }}
+                    className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Sync All Unsynced
+                  </button>
+                  <button
+                    onClick={() => setShowUnsynced(false)}
+                    className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
             </div>
