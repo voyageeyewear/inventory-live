@@ -42,8 +42,37 @@ const getShopifyInventoryForSKU = async (storeDomain, accessToken, sku) => {
   try {
     console.log(`🔍 Searching for SKU: ${sku} in store: ${storeDomain}`)
     
+    // First, test the connection with a simple shop info call
+    try {
+      const testUrl = `https://${storeDomain}/admin/api/2023-10/shop.json`
+      console.log(`🧪 Testing connection to: ${testUrl}`)
+      
+      const testResponse = await shopifyFetch(testUrl, {
+        method: 'GET',
+        headers: {
+          'X-Shopify-Access-Token': accessToken,
+          'Content-Type': 'application/json'
+        }
+      }, 'test')
+      
+      const testData = await testResponse.json()
+      console.log(`✅ Connection test successful:`, {
+        shopName: testData.shop?.name,
+        domain: testData.shop?.domain,
+        email: testData.shop?.email
+      })
+    } catch (testError) {
+      console.error(`❌ Connection test failed:`, testError.message)
+      return {
+        inventory_quantity: 0,
+        variants: [],
+        found: false,
+        error: `Connection test failed: ${testError.message}`
+      }
+    }
+    
     // Step 1: Search for products containing this SKU
-    const searchUrl = `https://${storeDomain}/admin/api/2025-01/products.json?limit=250`
+    const searchUrl = `https://${storeDomain}/admin/api/2023-10/products.json?limit=250`
     
     const response = await shopifyFetch(searchUrl, {
       method: 'GET',
@@ -55,6 +84,17 @@ const getShopifyInventoryForSKU = async (storeDomain, accessToken, sku) => {
     
     const data = await response.json()
     console.log(`📦 Found ${data.products?.length || 0} total products in store`)
+    console.log(`📊 API Response status: ${response.status}`)
+    console.log(`📋 Sample product:`, data.products?.[0] ? {
+      id: data.products[0].id,
+      title: data.products[0].title,
+      variantCount: data.products[0].variants?.length || 0,
+      firstVariant: data.products[0].variants?.[0] ? {
+        id: data.products[0].variants[0].id,
+        sku: data.products[0].variants[0].sku,
+        title: data.products[0].variants[0].title
+      } : null
+    } : 'No products found')
     
     if (!data.products || data.products.length === 0) {
       return {
@@ -101,7 +141,7 @@ const getShopifyInventoryForSKU = async (storeDomain, accessToken, sku) => {
         
         try {
           // Get inventory levels for this variant
-          const inventoryUrl = `https://${storeDomain}/admin/api/2025-01/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
+          const inventoryUrl = `https://${storeDomain}/admin/api/2023-10/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
           
           const inventoryResponse = await shopifyFetch(inventoryUrl, {
             method: 'GET',

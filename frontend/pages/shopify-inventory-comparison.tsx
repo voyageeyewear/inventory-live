@@ -134,7 +134,7 @@ export default function ShopifyInventoryComparison() {
         sortOrder: sortOrder
       })
 
-      const response = await axios.get(`/api/inventory/comparison?${params}`)
+      const response = await axios.get(`/api/inventory/comparison-v2?${params}`)
       console.log('Inventory comparison response:', response.data)
 
       if (response.data.success) {
