@@ -107,6 +107,9 @@ export default function ShopifyInventoryComparison() {
     errorCount: 0
   })
   const [expandedProducts, setExpandedProducts] = useState<Set<number>>(new Set())
+  const [syncReport, setSyncReport] = useState(null)
+  const [showReport, setShowReport] = useState(false)
+  const [loadingReport, setLoadingReport] = useState(false)
 
   const { user, isFullyAuthenticated } = useAuth()
 
@@ -370,6 +373,21 @@ export default function ShopifyInventoryComparison() {
     setExpandedProducts(newExpanded)
   }
 
+  const generateSyncReport = async () => {
+    setLoadingReport(true)
+    try {
+      const response = await axios.get('/api/inventory/sync-report')
+      setSyncReport(response.data)
+      setShowReport(true)
+      toast.success('Sync report generated successfully!')
+    } catch (error: any) {
+      console.error('Error generating sync report:', error)
+      toast.error('Failed to generate sync report')
+    } finally {
+      setLoadingReport(false)
+    }
+  }
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'in_sync':
@@ -461,6 +479,14 @@ export default function ShopifyInventoryComparison() {
               >
                 <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
                 {syncing ? 'Syncing...' : `Sync All Products (${totalProducts})`}
+              </button>
+              <button
+                onClick={generateSyncReport}
+                disabled={loadingReport}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                <FileText className={`h-4 w-4 ${loadingReport ? 'animate-pulse' : ''}`} />
+                {loadingReport ? 'Generating...' : 'Sync Report'}
               </button>
             </div>
           </div>
@@ -970,6 +996,131 @@ export default function ShopifyInventoryComparison() {
             </div>
           )}
         </div>
+
+        {/* Sync Report Modal */}
+        {showReport && syncReport && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Sync Report</h2>
+                <button
+                  onClick={() => setShowReport(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <XCircle className="h-6 w-6" />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Summary Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">{syncReport.summary.total_syncs}</div>
+                    <div className="text-sm text-blue-800">Total Syncs</div>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">{syncReport.summary.successful_syncs}</div>
+                    <div className="text-sm text-green-800">Successful</div>
+                  </div>
+                  <div className="bg-red-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-red-600">{syncReport.summary.failed_syncs}</div>
+                    <div className="text-sm text-red-800">Failed</div>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">{syncReport.summary.success_rate}%</div>
+                    <div className="text-sm text-purple-800">Success Rate</div>
+                  </div>
+                </div>
+
+                {/* Recent Activities */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Recent Sync Activities</h3>
+                  <div className="bg-gray-50 rounded-lg p-4 max-h-60 overflow-y-auto">
+                    {syncReport.recent_activities.length > 0 ? (
+                      <div className="space-y-2">
+                        {syncReport.recent_activities.slice(0, 10).map((activity: any, index: number) => (
+                          <div key={index} className="flex justify-between items-center py-2 border-b border-gray-200">
+                            <div className="flex items-center gap-2">
+                              <span className={activity.success ? 'text-green-600' : 'text-red-600'}>
+                                {activity.success ? '✅' : '❌'}
+                              </span>
+                              <span className="font-medium">{activity.sku}</span>
+                              <span className="text-gray-600">{activity.product_name}</span>
+                              {activity.variants_updated > 0 && (
+                                <span className="text-blue-600 text-sm">({activity.variants_updated} variants)</span>
+                              )}
+                            </div>
+                            <span className="text-gray-500 text-sm">
+                              {new Date(activity.created_at).toLocaleString()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-center py-4">No recent activities</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Store Performance */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Store Performance</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-100">
+                          <th className="text-left p-2">Store</th>
+                          <th className="text-right p-2">Total Syncs</th>
+                          <th className="text-right p-2">Successful</th>
+                          <th className="text-right p-2">Failed</th>
+                          <th className="text-right p-2">Success Rate</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {syncReport.store_performance.map((store: any, index: number) => (
+                          <tr key={index} className="border-b border-gray-200">
+                            <td className="p-2 font-medium">{store.store_name}</td>
+                            <td className="p-2 text-right">{store.total_syncs}</td>
+                            <td className="p-2 text-right text-green-600">{store.successful_syncs}</td>
+                            <td className="p-2 text-right text-red-600">{store.failed_syncs}</td>
+                            <td className="p-2 text-right">{store.success_rate}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Top Synced Products */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Top Synced Products</h3>
+                  <div className="bg-gray-50 rounded-lg p-4 max-h-60 overflow-y-auto">
+                    {syncReport.top_synced_products.length > 0 ? (
+                      <div className="space-y-2">
+                        {syncReport.top_synced_products.map((product: any, index: number) => (
+                          <div key={index} className="flex justify-between items-center py-2 border-b border-gray-200">
+                            <div>
+                              <div className="font-medium">{product.sku}</div>
+                              <div className="text-sm text-gray-600">{product.product_name}</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-medium">{product.sync_count} syncs</div>
+                              <div className="text-sm text-gray-500">
+                                Last: {new Date(product.last_sync).toLocaleDateString()}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-center py-4">No data available</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </Layout>
     </ProtectedRoute>
   )
