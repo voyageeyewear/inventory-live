@@ -6,192 +6,106 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log('📊 Generating comprehensive sync report...')
+    console.log('📊 Generating sync report...')
 
-    // Get sync statistics from the last 24 hours
-    const syncStats = await query(`
+    // Get basic statistics from stock_logs
+    const stats = await query(`
       SELECT 
-        COUNT(*) as total_syncs,
-        COUNT(CASE WHEN notes LIKE '%SUCCESS%' OR notes LIKE '%SYNC%' OR type = 'sync' THEN 1 END) as successful_syncs,
-        COUNT(CASE WHEN notes LIKE '%FAILED%' OR notes LIKE '%ERROR%' THEN 1 END) as failed_syncs,
-        COUNT(CASE WHEN created_at >= NOW() - INTERVAL '1 hour' THEN 1 END) as syncs_last_hour,
-        COUNT(CASE WHEN created_at >= NOW() - INTERVAL '24 hours' THEN 1 END) as syncs_last_24h
+        COUNT(*) as total_activities,
+        COUNT(CASE WHEN type = 'sync' OR notes LIKE '%SYNC%' THEN 1 END) as sync_activities,
+        COUNT(CASE WHEN notes LIKE '%SUCCESS%' OR notes LIKE '%SYNC%' THEN 1 END) as successful_activities,
+        COUNT(CASE WHEN notes LIKE '%FAILED%' OR notes LIKE '%ERROR%' THEN 1 END) as failed_activities,
+        COUNT(CASE WHEN created_at >= NOW() - INTERVAL '1 hour' THEN 1 END) as activities_last_hour,
+        COUNT(CASE WHEN created_at >= NOW() - INTERVAL '24 hours' THEN 1 END) as activities_last_24h
       FROM stock_logs 
       WHERE created_at >= NOW() - INTERVAL '7 days'
-        AND (type = 'sync' OR notes LIKE '%SYNC%')
     `)
 
     // Get recent sync activities
-    const recentSyncs = await query(`
+    const recentActivities = await query(`
       SELECT 
-        sl.*,
-        p.sku,
-        p.product_name,
-        p.category
+        sl.id,
+        sl.product_id,
+        sl.sku,
+        sl.product_name,
+        sl.type,
+        sl.notes,
+        sl.user_name,
+        sl.created_at
       FROM stock_logs sl
-      LEFT JOIN products p ON sl.product_id = p.id
       WHERE sl.created_at >= NOW() - INTERVAL '24 hours'
         AND (sl.type = 'sync' OR sl.notes LIKE '%SYNC%')
       ORDER BY sl.created_at DESC
-      LIMIT 50
+      LIMIT 20
     `)
 
-    // Get sync performance by store
-    const storeStats = await query(`
+    // Get store performance
+    const storePerformance = await query(`
       SELECT 
         s.store_name,
-        COUNT(sl.id) as total_syncs,
-        COUNT(CASE WHEN sl.notes LIKE '%SUCCESS%' OR sl.notes LIKE '%SYNC%' OR sl.type = 'sync' THEN 1 END) as successful_syncs,
-        COUNT(CASE WHEN sl.notes LIKE '%FAILED%' OR sl.notes LIKE '%ERROR%' THEN 1 END) as failed_syncs,
-        ROUND(
-          COUNT(CASE WHEN sl.notes LIKE '%SUCCESS%' OR sl.notes LIKE '%SYNC%' OR sl.type = 'sync' THEN 1 END) * 100.0 / NULLIF(COUNT(sl.id), 0), 2
-        ) as success_rate
+        COUNT(sl.id) as total_activities,
+        COUNT(CASE WHEN sl.notes LIKE '%SUCCESS%' OR sl.notes LIKE '%SYNC%' THEN 1 END) as successful_activities,
+        COUNT(CASE WHEN sl.notes LIKE '%FAILED%' OR sl.notes LIKE '%ERROR%' THEN 1 END) as failed_activities
       FROM stores s
       LEFT JOIN stock_logs sl ON s.id = sl.store_id
       WHERE sl.created_at >= NOW() - INTERVAL '24 hours'
         AND (sl.type = 'sync' OR sl.notes LIKE '%SYNC%')
       GROUP BY s.id, s.store_name
-      ORDER BY total_syncs DESC
-    `)
-
-    // Get sync performance by product category
-    const categoryStats = await query(`
-      SELECT 
-        p.category,
-        COUNT(sl.id) as total_syncs,
-        COUNT(CASE WHEN sl.notes LIKE '%SUCCESS%' OR sl.notes LIKE '%SYNC%' OR sl.type = 'sync' THEN 1 END) as successful_syncs,
-        COUNT(CASE WHEN sl.notes LIKE '%FAILED%' OR sl.notes LIKE '%ERROR%' THEN 1 END) as failed_syncs,
-        ROUND(
-          COUNT(CASE WHEN sl.notes LIKE '%SUCCESS%' OR sl.notes LIKE '%SYNC%' OR sl.type = 'sync' THEN 1 END) * 100.0 / NULLIF(COUNT(sl.id), 0), 2
-        ) as success_rate
-      FROM stock_logs sl
-      LEFT JOIN products p ON sl.product_id = p.id
-      WHERE sl.created_at >= NOW() - INTERVAL '24 hours'
-        AND (sl.type = 'sync' OR sl.notes LIKE '%SYNC%')
-        AND p.category IS NOT NULL
-      GROUP BY p.category
-      ORDER BY total_syncs DESC
-    `)
-
-    // Get hourly sync distribution
-    const hourlyStats = await query(`
-      SELECT 
-        EXTRACT(HOUR FROM created_at) as hour,
-        COUNT(*) as sync_count,
-        COUNT(CASE WHEN notes LIKE '%SUCCESS%' OR notes LIKE '%SYNC%' OR type = 'sync' THEN 1 END) as successful_count
-      FROM stock_logs 
-      WHERE created_at >= NOW() - INTERVAL '24 hours'
-        AND (type = 'sync' OR notes LIKE '%SYNC%')
-      GROUP BY EXTRACT(HOUR FROM created_at)
-      ORDER BY hour
-    `)
-
-    // Get error analysis
-    const errorAnalysis = await query(`
-      SELECT 
-        notes as error_message,
-        COUNT(*) as error_count,
-        COUNT(DISTINCT product_id) as affected_products
-      FROM stock_logs 
-      WHERE notes LIKE '%FAILED%' OR notes LIKE '%ERROR%'
-        AND created_at >= NOW() - INTERVAL '24 hours'
-        AND notes IS NOT NULL
-      GROUP BY notes
-      ORDER BY error_count DESC
-      LIMIT 10
+      ORDER BY total_activities DESC
     `)
 
     // Get top synced products
     const topSyncedProducts = await query(`
       SELECT 
-        p.sku,
-        p.product_name,
-        p.category,
+        sl.sku,
+        sl.product_name,
         COUNT(sl.id) as sync_count,
-        COUNT(CASE WHEN sl.notes LIKE '%SUCCESS%' OR sl.notes LIKE '%SYNC%' OR sl.type = 'sync' THEN 1 END) as successful_syncs,
         MAX(sl.created_at) as last_sync
       FROM stock_logs sl
-      LEFT JOIN products p ON sl.product_id = p.id
       WHERE sl.created_at >= NOW() - INTERVAL '24 hours'
         AND (sl.type = 'sync' OR sl.notes LIKE '%SYNC%')
-      GROUP BY p.id, p.sku, p.product_name, p.category
+      GROUP BY sl.sku, sl.product_name
       ORDER BY sync_count DESC
-      LIMIT 20
-    `)
-
-    // Get variant sync details (simplified since we don't have variants_updated field)
-    const variantStats = await query(`
-      SELECT 
-        1 as variants_updated,
-        COUNT(*) as sync_count,
-        1.0 as avg_variants_per_sync
-      FROM stock_logs 
-      WHERE created_at >= NOW() - INTERVAL '24 hours'
-        AND (type = 'sync' OR notes LIKE '%SYNC%')
-        AND (notes LIKE '%SUCCESS%' OR notes LIKE '%SYNC%')
-      GROUP BY 1
+      LIMIT 10
     `)
 
     const report = {
       success: true,
       generated_at: new Date().toISOString(),
       summary: {
-        total_syncs: parseInt(syncStats.rows[0]?.total_syncs || 0),
-        successful_syncs: parseInt(syncStats.rows[0]?.successful_syncs || 0),
-        failed_syncs: parseInt(syncStats.rows[0]?.failed_syncs || 0),
-        success_rate: syncStats.rows[0]?.total_syncs > 0 
-          ? Math.round((syncStats.rows[0]?.successful_syncs / syncStats.rows[0]?.total_syncs) * 100) 
+        total_syncs: parseInt(stats.rows[0]?.sync_activities || 0),
+        successful_syncs: parseInt(stats.rows[0]?.successful_activities || 0),
+        failed_syncs: parseInt(stats.rows[0]?.failed_activities || 0),
+        success_rate: stats.rows[0]?.sync_activities > 0 
+          ? Math.round((stats.rows[0]?.successful_activities / stats.rows[0]?.sync_activities) * 100) 
           : 0,
-        syncs_last_hour: parseInt(syncStats.rows[0]?.syncs_last_hour || 0),
-        syncs_last_24h: parseInt(syncStats.rows[0]?.syncs_last_24h || 0)
+        syncs_last_hour: parseInt(stats.rows[0]?.activities_last_hour || 0),
+        syncs_last_24h: parseInt(stats.rows[0]?.activities_last_24h || 0)
       },
-      recent_activities: recentSyncs.rows.map(sync => ({
-        id: sync.id,
-        product_id: sync.product_id,
-        sku: sync.sku,
-        product_name: sync.product_name,
-        category: sync.category,
-        success: sync.notes?.includes('SUCCESS') || sync.notes?.includes('SYNC') || sync.type === 'sync',
-        variants_updated: 1, // Default to 1 since we don't track variants separately
-        error_message: sync.notes?.includes('FAILED') || sync.notes?.includes('ERROR') ? sync.notes : null,
-        created_at: sync.created_at
+      recent_activities: recentActivities.rows.map(activity => ({
+        id: activity.id,
+        product_id: activity.product_id,
+        sku: activity.sku,
+        product_name: activity.product_name,
+        success: activity.notes?.includes('SUCCESS') || activity.notes?.includes('SYNC') || activity.type === 'sync',
+        variants_updated: 1,
+        error_message: activity.notes?.includes('FAILED') || activity.notes?.includes('ERROR') ? activity.notes : null,
+        created_at: activity.created_at
       })),
-      store_performance: storeStats.rows.map(store => ({
+      store_performance: storePerformance.rows.map(store => ({
         store_name: store.store_name,
-        total_syncs: parseInt(store.total_syncs || 0),
-        successful_syncs: parseInt(store.successful_syncs || 0),
-        failed_syncs: parseInt(store.failed_syncs || 0),
-        success_rate: parseFloat(store.success_rate || 0)
-      })),
-      category_performance: categoryStats.rows.map(category => ({
-        category: category.category,
-        total_syncs: parseInt(category.total_syncs || 0),
-        successful_syncs: parseInt(category.successful_syncs || 0),
-        failed_syncs: parseInt(category.failed_syncs || 0),
-        success_rate: parseFloat(category.success_rate || 0)
-      })),
-      hourly_distribution: hourlyStats.rows.map(hour => ({
-        hour: parseInt(hour.hour),
-        sync_count: parseInt(hour.sync_count || 0),
-        successful_count: parseInt(hour.successful_count || 0)
-      })),
-      error_analysis: errorAnalysis.rows.map(error => ({
-        error_message: error.error_message,
-        error_count: parseInt(error.error_count || 0),
-        affected_products: parseInt(error.affected_products || 0)
+        total_syncs: parseInt(store.total_activities || 0),
+        successful_syncs: parseInt(store.successful_activities || 0),
+        failed_syncs: parseInt(store.failed_activities || 0),
+        success_rate: store.total_activities > 0 
+          ? Math.round((store.successful_activities / store.total_activities) * 100) 
+          : 0
       })),
       top_synced_products: topSyncedProducts.rows.map(product => ({
         sku: product.sku,
         product_name: product.product_name,
-        category: product.category,
         sync_count: parseInt(product.sync_count || 0),
-        successful_syncs: parseInt(product.successful_syncs || 0),
         last_sync: product.last_sync
-      })),
-      variant_statistics: variantStats.rows.map(variant => ({
-        variants_updated: parseInt(variant.variants_updated || 0),
-        sync_count: parseInt(variant.sync_count || 0),
-        avg_variants_per_sync: parseFloat(variant.avg_variants_per_sync || 0)
       }))
     }
 
