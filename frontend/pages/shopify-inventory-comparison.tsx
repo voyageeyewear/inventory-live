@@ -180,7 +180,13 @@ export default function ShopifyInventoryComparison() {
   }
 
   const syncProductToShopify = async (product: Product) => {
-    console.log('Syncing product:', product)
+    console.log('🔄 syncProductToShopify called with product:', product)
+    console.log('Product details:', {
+      id: product.id,
+      sku: product.sku,
+      name: product.product_name,
+      quantity: product.quantity
+    })
     
     const confirm = window.confirm(
       `🔄 SYNC ALL VARIANTS TO SHOPIFY\n\n` +
@@ -886,7 +892,10 @@ export default function ShopifyInventoryComparison() {
 
                             <div className="flex items-center gap-1">
                               <button
-                                onClick={() => syncProductToShopify(comparison.product)}
+                                onClick={() => {
+                                  console.log('🖱️ Sync All button clicked for product:', comparison.product.sku)
+                                  syncProductToShopify(comparison.product)
+                                }}
                                 disabled={syncing || comparison.status === 'in_sync'}
                                 className={`flex items-center gap-1 px-2 py-1 text-xs rounded ${
                                   comparison.status === 'in_sync' 
