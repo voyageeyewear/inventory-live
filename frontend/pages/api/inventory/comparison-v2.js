@@ -80,14 +80,16 @@ const getShopifyInventoryForSKU = async (storeDomain, accessToken, sku) => {
     
     console.log(`🔍 Starting paginated search for SKU: ${sku}`)
     
-    while (hasMore && page <= maxPages) {
+    let foundSku = false
+    
+    while (hasMore && page <= maxPages && !foundSku) {
       try {
         let searchUrl = `https://${storeDomain}/admin/api/2023-10/products.json?limit=250`
         if (pageInfo) {
           searchUrl += `&page_info=${pageInfo}`
         }
         
-        console.log(`📄 Fetching page ${page}...`)
+        console.log(`📄 Fetching page ${page} with URL: ${searchUrl}`)
         
         const response = await shopifyFetch(searchUrl, {
           method: 'GET',
@@ -100,6 +102,7 @@ const getShopifyInventoryForSKU = async (storeDomain, accessToken, sku) => {
         const data = await response.json()
         
         if (!data.products || data.products.length === 0) {
+          console.log(`No more products found on page ${page}`)
           hasMore = false
           break
         }
@@ -114,25 +117,31 @@ const getShopifyInventoryForSKU = async (storeDomain, accessToken, sku) => {
         
         if (productsWithSku.length > 0) {
           console.log(`🎯 Found ${productsWithSku.length} products with SKU ${sku} on page ${page}`)
+          foundSku = true
         }
         
         // Check for next page using Link header (cursor-based pagination)
         const linkHeader = response.headers.get('Link')
+        console.log(`Link header: ${linkHeader}`)
+        
         if (linkHeader && linkHeader.includes('rel="next"')) {
           const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/)
           if (nextMatch) {
             const nextUrl = new URL(nextMatch[1])
             pageInfo = nextUrl.searchParams.get('page_info')
             page++
+            console.log(`Next page info: ${pageInfo}`)
           } else {
+            console.log(`No next page found in Link header`)
             hasMore = false
           }
         } else {
+          console.log(`No Link header or no next page`)
           hasMore = false
         }
         
         // Add delay to respect rate limits
-        await new Promise(resolve => setTimeout(resolve, 100))
+        await new Promise(resolve => setTimeout(resolve, 200))
         
       } catch (error) {
         console.error(`Error fetching products page ${page}:`, error.message)

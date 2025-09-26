@@ -209,12 +209,16 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
     
     // Fetch products in batches until we find the SKU or exhaust all products
     let pageInfo = null
-    while (hasMore && allProducts.length < 1000) { // Limit to prevent infinite loops
+    let foundSku = false
+    
+    while (hasMore && allProducts.length < 2000 && !foundSku) { // Increased limit and stop when found
       try {
         let url = `https://${store.store_domain}/admin/api/2023-10/products.json?limit=250`
         if (pageInfo) {
           url += `&page_info=${pageInfo}`
         }
+        
+        console.log(`📄 Fetching page ${page} with URL: ${url}`)
         
         const response = await shopifyFetch(url, {
           method: 'GET',
@@ -227,6 +231,7 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
         const data = await response.json()
         
         if (!data.products || data.products.length === 0) {
+          console.log(`No more products found on page ${page}`)
           hasMore = false
           break
         }
@@ -234,32 +239,39 @@ export const syncAllVariantsForSKU = async (store, sku, quantity) => {
         allProducts = allProducts.concat(data.products)
         console.log(`Page ${page}: Found ${data.products.length} products, total: ${allProducts.length}`)
         
-        // Check if we found any products with this SKU
+        // Check if we found any products with this SKU on this page
         const productsWithSku = data.products.filter(product => 
           product.variants.some(variant => variant.sku && variant.sku.toLowerCase().trim() === sku.toLowerCase().trim())
         )
         
         if (productsWithSku.length > 0) {
-          console.log(`Found ${productsWithSku.length} products with SKU ${sku} on page ${page}`)
+          console.log(`🎯 Found ${productsWithSku.length} products with SKU ${sku} on page ${page}`)
+          foundSku = true
+          // Don't break here, continue to get all products to ensure we don't miss any
         }
         
         // Check for next page using Link header (cursor-based pagination)
         const linkHeader = response.headers.get('Link')
+        console.log(`Link header: ${linkHeader}`)
+        
         if (linkHeader && linkHeader.includes('rel="next"')) {
           const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/)
           if (nextMatch) {
             const nextUrl = new URL(nextMatch[1])
             pageInfo = nextUrl.searchParams.get('page_info')
             page++
+            console.log(`Next page info: ${pageInfo}`)
           } else {
+            console.log(`No next page found in Link header`)
             hasMore = false
           }
         } else {
+          console.log(`No Link header or no next page`)
           hasMore = false
         }
         
         // Add delay to respect rate limits
-        await new Promise(resolve => setTimeout(resolve, 100))
+        await new Promise(resolve => setTimeout(resolve, 200))
         
       } catch (error) {
         console.error(`Error fetching products page ${page}:`, error.message)
