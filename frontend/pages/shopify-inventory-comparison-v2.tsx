@@ -192,7 +192,7 @@ export default function ShopifyInventoryComparisonV2() {
       
     } catch (error) {
       console.error(`💥 Error syncing ${product.sku}:`, error)
-      setSyncResults(prev => ({ ...prev, [product.id]: { success: false, error: error.message } }))
+      setSyncResults(prev => ({ ...prev, [product.id]: { success: false, error: error instanceof Error ? error.message : 'Unknown error' } }))
     } finally {
       setSyncingProducts(prev => {
         const newSet = new Set(prev)
@@ -222,7 +222,7 @@ export default function ShopifyInventoryComparisonV2() {
           await syncProduct(comparison.product)
           successCount++
         } catch (error) {
-          console.error(`❌ Bulk sync error for ${comparison.product.sku}:`, error)
+          console.error(`❌ Bulk sync error for ${comparison.product.sku}:`, error instanceof Error ? error.message : 'Unknown error')
           errorCount++
         }
         
@@ -235,7 +235,7 @@ export default function ShopifyInventoryComparisonV2() {
       setSelectAll(false)
       
     } catch (error) {
-      console.error('💥 Bulk sync error:', error)
+      console.error('💥 Bulk sync error:', error instanceof Error ? error.message : 'Unknown error')
     } finally {
       setBulkSyncing(false)
       setBulkSyncProgress({ current: 0, total: 0 })
