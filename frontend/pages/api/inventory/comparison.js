@@ -187,7 +187,7 @@ const authenticateToken = async (req) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-2024-secure-key')
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-2024-secure-key'); // Force deployment
     
     const userResult = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.id])
 
