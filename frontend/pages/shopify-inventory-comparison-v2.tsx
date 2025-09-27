@@ -98,6 +98,8 @@ export default function ShopifyInventoryComparisonV2() {
   const [syncResults, setSyncResults] = useState<Record<number, any>>({})
   const [bulkSyncing, setBulkSyncing] = useState(false)
   const [bulkSyncProgress, setBulkSyncProgress] = useState({ current: 0, total: 0 })
+  const [syncAllProducts, setSyncAllProducts] = useState(false)
+  const [syncAllProgress, setSyncAllProgress] = useState({ current: 0, total: 0, success: 0, failed: 0 })
   
   // Selection
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set())
@@ -239,6 +241,44 @@ export default function ShopifyInventoryComparisonV2() {
     } finally {
       setBulkSyncing(false)
       setBulkSyncProgress({ current: 0, total: 0 })
+      loadData()
+    }
+  }
+
+  // Sync all products on current page
+  const syncAllProductsOnPage = async () => {
+    if (comparisons.length === 0) return
+    
+    try {
+      setSyncAllProducts(true)
+      setSyncAllProgress({ current: 0, total: comparisons.length, success: 0, failed: 0 })
+      
+      let successCount = 0
+      let errorCount = 0
+      
+      for (let i = 0; i < comparisons.length; i++) {
+        const comparison = comparisons[i]
+        setSyncAllProgress({ current: i + 1, total: comparisons.length, success: successCount, failed: errorCount })
+        
+        try {
+          await syncProduct(comparison.product)
+          successCount++
+        } catch (error) {
+          console.error(`❌ Sync all error for ${comparison.product.sku}:`, error instanceof Error ? error.message : 'Unknown error')
+          errorCount++
+        }
+        
+        // Rate limiting: 4-5 seconds between API calls as requested
+        await new Promise(resolve => setTimeout(resolve, 4500))
+      }
+      
+      console.log(`✅ Sync all completed: ${successCount} success, ${errorCount} errors`)
+      
+    } catch (error) {
+      console.error('💥 Sync all error:', error instanceof Error ? error.message : 'Unknown error')
+    } finally {
+      setSyncAllProducts(false)
+      setSyncAllProgress({ current: 0, total: 0, success: 0, failed: 0 })
       loadData()
     }
   }
@@ -476,6 +516,53 @@ export default function ShopifyInventoryComparisonV2() {
                 </div>
               </div>
 
+              {/* Sync All Products Button */}
+              <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg mb-4">
+                <div>
+                  <h4 className="text-sm font-medium text-green-800">Sync All Products</h4>
+                  <p className="text-xs text-green-600 mt-1">
+                    Sync all {comparisons.length} products on this page one by one with rate limiting
+                  </p>
+                </div>
+                <button
+                  onClick={syncAllProductsOnPage}
+                  disabled={syncAllProducts || comparisons.length === 0}
+                  className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {syncAllProducts ? (
+                    <span className="flex items-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Syncing {syncAllProgress.current}/{syncAllProgress.total}...
+                    </span>
+                  ) : (
+                    `Sync All Products (${comparisons.length})`
+                  )}
+                </button>
+              </div>
+
+              {/* Progress Bar for Sync All */}
+              {syncAllProducts && (
+                <div className="mb-4 p-4 bg-green-50 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-green-800">Syncing Products...</span>
+                    <span className="text-sm text-green-600">
+                      {syncAllProgress.current}/{syncAllProgress.total}
+                    </span>
+                  </div>
+                  <div className="w-full bg-green-200 rounded-full h-2 mb-2">
+                    <div 
+                      className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${(syncAllProgress.current / syncAllProgress.total) * 100}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between text-xs text-green-600">
+                    <span>✅ Success: {syncAllProgress.success}</span>
+                    <span>❌ Failed: {syncAllProgress.failed}</span>
+                    <span>⏱️ Rate: 4.5s per product</span>
+                  </div>
+                </div>
+              )}
+
               {/* Bulk Actions */}
               {selectedProducts.size > 0 && (
                 <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
@@ -484,7 +571,7 @@ export default function ShopifyInventoryComparisonV2() {
                   </div>
                   <button
                     onClick={bulkSyncSelected}
-                    disabled={bulkSyncing}
+                    disabled={bulkSyncing || syncAllProducts}
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {bulkSyncing ? (
@@ -664,7 +751,12 @@ export default function ShopifyInventoryComparisonV2() {
                               ) : (
                                 <button
                                   onClick={() => syncProduct(comparison.product)}
-                                  className="text-blue-600 hover:text-blue-900 mr-3"
+                                  disabled={syncAllProducts}
+                                  className={`mr-3 ${
+                                    syncAllProducts 
+                                      ? 'text-gray-400 cursor-not-allowed' 
+                                      : 'text-blue-600 hover:text-blue-900'
+                                  }`}
                                 >
                                   🔄 Sync All
                                 </button>
