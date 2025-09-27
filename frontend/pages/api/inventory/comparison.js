@@ -59,12 +59,18 @@ const getShopifyInventory = async (storeDomain, accessToken, sku) => {
         
         page++
         
-        // Add delay to respect rate limits
-        await new Promise(resolve => setTimeout(resolve, 100))
+        // Add delay to respect rate limits - increased for stability
+        await new Promise(resolve => setTimeout(resolve, 300))
         
       } catch (error) {
         console.error(`Error fetching products page ${page}:`, error.message)
-        hasMore = false
+        // Don't immediately stop on first error, try a few more pages
+        if (page > 3) {
+          hasMore = false
+        } else {
+          // Wait longer and retry
+          await new Promise(resolve => setTimeout(resolve, 2000))
+        }
       }
     }
     
@@ -178,6 +184,7 @@ export default async function handler(req, res) {
 
   try {
     console.log('=== INVENTORY COMPARISON API CALLED ===')
+    console.log('Request timestamp:', new Date().toISOString())
     
     const { 
       page = 1, 
@@ -187,7 +194,8 @@ export default async function handler(req, res) {
       store = 'all', 
       category = 'all',
       sortBy = 'smart',
-      sortOrder = 'desc'
+      sortOrder = 'desc',
+      _t = Date.now() // Cache busting parameter
     } = req.query
     
     const offset = (parseInt(page) - 1) * parseInt(limit)
@@ -307,54 +315,68 @@ export default async function handler(req, res) {
 
       // Get inventory from each connected store
       for (const store of stores) {
-        try {
-          console.log(`  Fetching from store: ${store.store_name}`)
-          console.log(`  Calling getShopifyInventory with:`, {
-            domain: store.shopify_domain,
-            sku: product.sku,
-            tokenLength: store.access_token?.length
-          })
-          
-          const shopifyInventory = await getShopifyInventory(
-            store.shopify_domain,
-            store.access_token,
-            product.sku
-          )
-          
-          console.log(`  getShopifyInventory returned:`, shopifyInventory)
+        let retryCount = 0
+        let success = false
+        
+        while (retryCount < 3 && !success) {
+          try {
+            console.log(`  Fetching from store: ${store.store_name} (attempt ${retryCount + 1})`)
+            console.log(`  Calling getShopifyInventory with:`, {
+              domain: store.shopify_domain,
+              sku: product.sku,
+              tokenLength: store.access_token?.length
+            })
+            
+            const shopifyInventory = await getShopifyInventory(
+              store.shopify_domain,
+              store.access_token,
+              product.sku
+            )
+            
+            console.log(`  getShopifyInventory returned:`, shopifyInventory)
 
-          console.log(`  Store ${store.store_name} result:`, {
-            found: shopifyInventory?.found,
-            total_quantity: shopifyInventory?.inventory_quantity,
-            variant_count: shopifyInventory?.total_variants,
-            variants: shopifyInventory?.variants?.map(v => `${v.variantTitle}: ${v.quantity}`)
-          })
+            console.log(`  Store ${store.store_name} result:`, {
+              found: shopifyInventory?.found,
+              total_quantity: shopifyInventory?.inventory_quantity,
+              variant_count: shopifyInventory?.total_variants,
+              variants: shopifyInventory?.variants?.map(v => `${v.variantTitle}: ${v.quantity}`)
+            })
 
-          const quantity = shopifyInventory?.inventory_quantity || 0
-          const variantCount = shopifyInventory?.total_variants || 0
-          
-          shopifyQuantities[store.id] = {
-            quantity,
-            store_name: store.store_name,
-            variants: shopifyInventory?.variants || [],
-            variant_count: variantCount,
-            found: shopifyInventory?.found || false
-          }
-          
-          totalShopifyQuantity += quantity
-          totalVariantsFound += variantCount
+            const quantity = shopifyInventory?.inventory_quantity || 0
+            const variantCount = shopifyInventory?.total_variants || 0
+            
+            shopifyQuantities[store.id] = {
+              quantity,
+              store_name: store.store_name,
+              variants: shopifyInventory?.variants || [],
+              variant_count: variantCount,
+              found: shopifyInventory?.found || false
+            }
+            
+            totalShopifyQuantity += quantity
+            totalVariantsFound += variantCount
+            success = true
 
-          // Add delay to prevent rate limiting
-          await new Promise(resolve => setTimeout(resolve, 200))
-        } catch (error) {
-          console.error(`  Failed to get inventory for ${product.sku} from ${store.store_name}:`, error)
-          shopifyQuantities[store.id] = {
-            quantity: 0,
-            store_name: store.store_name,
-            variants: [],
-            variant_count: 0,
-            found: false,
-            error: error.message
+            // Add delay to prevent rate limiting
+            await new Promise(resolve => setTimeout(resolve, 500))
+          } catch (error) {
+            retryCount++
+            console.error(`  Failed to get inventory for ${product.sku} from ${store.store_name} (attempt ${retryCount}):`, error.message)
+            
+            if (retryCount >= 3) {
+              // Final failure - set default values
+              shopifyQuantities[store.id] = {
+                quantity: 0,
+                store_name: store.store_name,
+                variants: [],
+                variant_count: 0,
+                found: false,
+                error: error.message
+              }
+            } else {
+              // Wait before retry with exponential backoff
+              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount))
+            }
           }
         }
       }
