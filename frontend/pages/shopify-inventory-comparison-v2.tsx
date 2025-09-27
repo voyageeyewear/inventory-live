@@ -123,7 +123,7 @@ export default function ShopifyInventoryComparisonV2() {
       })
       
       console.log('🔍 Loading inventory comparison data...')
-      const response = await fetch(`/api/inventory/comparison-v3?${params}`)
+      const response = await fetch(`/api/inventory/comparison?${params}&_t=${Date.now()}`)
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -524,20 +524,36 @@ export default function ShopifyInventoryComparisonV2() {
                     Sync all {comparisons.length} products on this page one by one with rate limiting
                   </p>
                 </div>
-                <button
-                  onClick={syncAllProductsOnPage}
-                  disabled={syncAllProducts || comparisons.length === 0}
-                  className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {syncAllProducts ? (
-                    <span className="flex items-center">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Syncing {syncAllProgress.current}/{syncAllProgress.total}...
-                    </span>
-                  ) : (
-                    `Sync All Products (${comparisons.length})`
-                  )}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={loadData}
+                    disabled={loadingData}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loadingData ? (
+                      <span className="flex items-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Refreshing...
+                      </span>
+                    ) : (
+                      '🔄 Refresh Data'
+                    )}
+                  </button>
+                  <button
+                    onClick={syncAllProductsOnPage}
+                    disabled={syncAllProducts || comparisons.length === 0}
+                    className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {syncAllProducts ? (
+                      <span className="flex items-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Syncing {syncAllProgress.current}/{syncAllProgress.total}...
+                      </span>
+                    ) : (
+                      `Sync All Products (${comparisons.length})`
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Progress Bar for Sync All */}
