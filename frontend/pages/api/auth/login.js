@@ -47,7 +47,7 @@ export default async function handler(req, res) {
         email: user.email,
         role: user.role
       },
-      process.env.JWT_SECRET || 'inventory-jwt-secret-key-2024-production',
+      process.env.JWT_SECRET || 'inventory-jwt-secret-2024-secure-key',
       { expiresIn: '24h' }
     )
 

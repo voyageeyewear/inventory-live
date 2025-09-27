@@ -13,7 +13,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ message: 'No token provided' })
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-key-2024-production')
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'inventory-jwt-secret-2024-secure-key')
     
     const userResult = await query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.id])
 
