@@ -6,7 +6,7 @@ import Layout from '../components/Layout'
 import {
   Search,
   RefreshCw,
-  Sync,
+  RotateCcw,
   Download,
   CheckCircle,
   XCircle,
@@ -93,7 +93,7 @@ export default function ShopifyInventoryComparisonV2() {
   // Sync individual product
   const syncProduct = async (product: Product) => {
     try {
-      setSyncingProducts(prev => new Set([...prev, product.id]))
+      setSyncingProducts(prev => new Set(Array.from(prev).concat(product.id)))
       
       const response = await axios.post('/api/inventory/sync-to-shopify', {
         productId: product.id,
@@ -327,7 +327,7 @@ export default function ShopifyInventoryComparisonV2() {
                 {bulkSyncing ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
-                  <Sync className="h-4 w-4 mr-2" />
+                  <RotateCcw className="h-4 w-4 mr-2" />
                 )}
                 Sync All Products ({comparisons.length})
               </button>
@@ -475,7 +475,7 @@ export default function ShopifyInventoryComparisonV2() {
                             {syncingProducts.has(comparison.product.id) ? (
                               <Loader2 className="h-4 w-4 animate-spin mr-1" />
                             ) : (
-                              <Sync className="h-4 w-4 mr-1" />
+                              <RotateCcw className="h-4 w-4 mr-1" />
                             )}
                             Sync
                           </button>
@@ -538,7 +538,5 @@ export default function ShopifyInventoryComparisonV2() {
         </div>
       </div>
     </Layout>
-  )
-}
   )
 }
