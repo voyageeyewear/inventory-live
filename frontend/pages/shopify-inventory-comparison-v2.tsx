@@ -123,13 +123,9 @@ export default function ShopifyInventoryComparisonV2() {
       })
       
       console.log('🔍 Loading inventory comparison data...')
-      const response = await fetch(`/api/inventory/comparison?${params}&_t=${Date.now()}`)
+      const response = await axios.get(`/api/inventory/comparison?${params}&_t=${Date.now()}`)
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      
-      const data = await response.json()
+      const data = response.data
       
       if (!data.success) {
         throw new Error(data.message || 'Failed to load data')
