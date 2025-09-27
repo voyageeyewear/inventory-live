@@ -19,7 +19,7 @@ const getShopifyInventory = async (storeDomain, accessToken, sku) => {
     // Fetch products in batches until we find the SKU or exhaust all products
     while (hasMore && allProducts.length < 1000) { // Limit to prevent infinite loops
       try {
-        const url = `https://${storeDomain}/admin/api/2025-01/products.json?page=${page}&limit=250`
+        const url = `https://${storeDomain}/admin/api/2023-10/products.json?page=${page}&limit=250`
         
         const response = await shopifyFetch(url, {
           method: 'GET',
@@ -106,7 +106,7 @@ const getShopifyInventory = async (storeDomain, accessToken, sku) => {
         console.log(`Processing variant: "${variant.title}" (ID: ${variant.id}) with SKU ${variant.sku}`)
         try {
           // Get current inventory level
-          const inventoryUrl = `https://${storeDomain}/admin/api/2025-01/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
+          const inventoryUrl = `https://${storeDomain}/admin/api/2023-10/inventory_levels.json?inventory_item_ids=${variant.inventory_item_id}`
           
           const inventoryResponse = await shopifyFetch(inventoryUrl, {
             method: 'GET',
