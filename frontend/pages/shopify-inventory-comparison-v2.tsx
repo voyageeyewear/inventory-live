@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import Layout from '../components/Layout'
 import { useAuth } from '../contexts/AuthContext'
+import axios from 'axios'
 
 interface Product {
   id: number
